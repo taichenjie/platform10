@@ -1,0 +1,21 @@
+[31mERROR[0m Could not autodetect any projects from path [4minfra/terraform/environments/ap-southeast-1[24m
+
+[1mProject:[22m taichenjie/platform10/infra/terraform/environments/ap-southeast-1
+
+[1mErrors:[22m
+  could not detect path type for 'infra/terraform/environments/ap-southeast-1'
+
+  Try adding a config-file to configure how Infracost should run. See [4;1mhttps://infracost.io/config-file[24;22m for details and examples.
+
+[1m OVERALL TOTAL[22m       $0.00
+
+*Usage costs can be estimated by updating Infracost Cloud settings, see docs for other options.
+
+──────────────────────────────────
+No cloud resources were detected
+
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━┳━━━━━━━━━━━━┓
+┃ Project                                                          ┃ Baseline cost ┃ Usage cost* ┃ Total cost ┃
+┣━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╋━━━━━━━━━━━━━━━╋━━━━━━━━━━━━━╋━━━━━━━━━━━━┫
+┃ taichenjie/platform10/infra/ter...rm/environments/ap-southeast-1 ┃         $0.00 ┃           - ┃      $0.00 ┃
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┻━━━━━━━━━━━━━━━┻━━━━━━━━━━━━━┻━━━━━━━━━━━━┛
