@@ -2,14 +2,17 @@
 **/.terraform/
 *.tfstate
 *.tfstate.backup
-*.tfvars
-!*.tfvars.example
-.terraform.lock.hcl
 crash.log
 override.tf
 override.tf.json
 *_override.tf
 *_override.tf.json
+
+# Commit the lock file (pins provider versions + checksums for reproducible init).
+# Commit normal config .tfvars (CIDRs, instance types — no secrets live here).
+# Ignore ONLY explicitly-secret tfvars:
+secrets.auto.tfvars
+*.secret.tfvars
 
 # Secrets — never in git
 *.pem
