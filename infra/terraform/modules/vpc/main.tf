@@ -172,6 +172,7 @@ resource "aws_instance" "nat" {
   private_ip                  = "10.0.0.10"
   vpc_security_group_ids      = [aws_security_group.nat.id]
   source_dest_check           = false
+  iam_instance_profile        = var.nat_instance_profile_name
   associate_public_ip_address = false
 
   user_data = templatefile("${path.module}/files/nat-userdata.sh", {
@@ -260,4 +261,121 @@ resource "aws_route_table_association" "private" {
 
   subnet_id      = each.value.id
   route_table_id = aws_route_table.private.id
+}
+
+# ---------------------------------------------------------------------------
+# S3 VPC endpoint (gateway type).
+# Traffic from private subnets to S3 stays on the AWS internal network
+# instead of going out via the NAT instance. Free (no hourly charge, no
+# data processing). Required for the Q2 remote Terraform state backend to
+# avoid sending state file reads/writes out the NAT.
+#
+# Gateway endpoints work by adding a route to the route table — they do
+# not create an ENI in a subnet.
+# ---------------------------------------------------------------------------
+resource "aws_vpc_endpoint" "s3" {
+  vpc_id            = aws_vpc.this.id
+  service_name      = "com.amazonaws.${data.aws_region.current.region}.s3"
+  vpc_endpoint_type = "Gateway"
+  route_table_ids   = [aws_route_table.private.id]
+
+  tags = {
+    Name = "${var.vpc_name}-vpce-s3"
+  }
+}
+
+# Region lookup. Used to build the regional service name for the S3
+# endpoint without hardcoding the region in two places.
+data "aws_region" "current" {}
+
+# ---------------------------------------------------------------------------
+# Security group for interface VPC endpoints (SSM, ECR).
+# Endpoints are reached on HTTPS (443). Ingress is restricted to the VPC
+# CIDR so only in-VPC clients can reach them. No egress rules: endpoints
+# are servers, they receive connections, they don't initiate any.
+# ---------------------------------------------------------------------------
+resource "aws_security_group" "vpc_endpoints" {
+  name        = "${var.vpc_name}-vpce-sg"
+  description = "Allow HTTPS from the VPC to interface VPC endpoints (SSM, ECR)."
+  vpc_id      = aws_vpc.this.id
+
+  tags = {
+    Name = "${var.vpc_name}-vpce-sg"
+  }
+}
+
+resource "aws_vpc_security_group_ingress_rule" "vpce_https_from_vpc" {
+  security_group_id = aws_security_group.vpc_endpoints.id
+  description       = "HTTPS from any address inside the VPC"
+  cidr_ipv4         = var.vpc_cidr
+  from_port         = 443
+  to_port           = 443
+  ip_protocol       = "tcp"
+}
+
+# ---------------------------------------------------------------------------
+# SSM family interface endpoints.
+# All three are required for SSM Session Manager to work:
+#   - ssm:          main SSM API
+#   - ssmmessages:  WebSocket for interactive sessions
+#   - ec2messages:  SSM Agent ↔ SSM communication
+#
+# Single-AZ placement (private-az1 only) is a deliberate cost decision
+# documented in ADR-002. Workloads in private-az2 reach these endpoints
+# cross-AZ; functionally fine for SSM's low traffic volume.
+#
+# private_dns_enabled = true makes ssm.ap-southeast-1.amazonaws.com
+# resolve to the ENI in our VPC instead of the public AWS endpoint.
+# Requires enable_dns_support + enable_dns_hostnames on the VPC, which
+# are on by default in this module.
+# ---------------------------------------------------------------------------
+locals {
+  ssm_endpoint_services = ["ssm", "ssmmessages", "ec2messages"]
+}
+
+resource "aws_vpc_endpoint" "ssm_family" {
+  for_each = toset(local.ssm_endpoint_services)
+
+  vpc_id              = aws_vpc.this.id
+  service_name        = "com.amazonaws.${data.aws_region.current.region}.${each.value}"
+  vpc_endpoint_type   = "Interface"
+  subnet_ids          = [aws_subnet.private["private-az1"].id]
+  security_group_ids  = [aws_security_group.vpc_endpoints.id]
+  private_dns_enabled = true
+
+  tags = {
+    Name = "${var.vpc_name}-vpce-${each.value}"
+  }
+}
+
+# ---------------------------------------------------------------------------
+# ECR interface endpoints.
+# Two are required for ECR to work end-to-end:
+#   - ecr.api: the ECR API (auth, repo metadata, tag lookups)
+#   - ecr.dkr: the Docker Registry API (image layer push/pull)
+#
+# Image layer storage in ECR is backed by S3. The S3 gateway endpoint
+# from above handles that traffic automatically, so all three endpoints
+# (ecr.api + ecr.dkr + s3) work together for fully-private container
+# image pulls.
+#
+# Single-AZ placement matches the SSM endpoints — see ADR-002.
+# ---------------------------------------------------------------------------
+locals {
+  ecr_endpoint_services = ["ecr.api", "ecr.dkr"]
+}
+
+resource "aws_vpc_endpoint" "ecr" {
+  for_each = toset(local.ecr_endpoint_services)
+
+  vpc_id              = aws_vpc.this.id
+  service_name        = "com.amazonaws.${data.aws_region.current.region}.${each.value}"
+  vpc_endpoint_type   = "Interface"
+  subnet_ids          = [aws_subnet.private["private-az1"].id]
+  security_group_ids  = [aws_security_group.vpc_endpoints.id]
+  private_dns_enabled = true
+
+  tags = {
+    Name = "${var.vpc_name}-vpce-${each.value}"
+  }
 }

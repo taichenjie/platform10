@@ -29,3 +29,9 @@ variable "enable_dns_hostnames" {
   type        = bool
   default     = true
 }
+
+variable "nat_instance_profile_name" {
+  description = "Name of an IAM instance profile to attach to the NAT instance. Required for SSM Session Manager access. Defaults to null (no profile)."
+  type        = string
+  default     = null
+}
