@@ -1,0 +1,43 @@
+[1mProject:[22m taichenjie/platform10/infra/terraform/environments/dev/tfplan.json
+
+ [4mName[24m                                                     [4mMonthly Qty[24m  [4mUnit[24m            [4mMonthly Cost[24m
+
+ [1mmodule.vpc.aws_vpc_endpoint.ecr["ecr.api"][22m
+ [2m├─[22m Data processed (first 1PB)                          Monthly cost depends on usage: $0.01 per GB
+ [2m└─[22m Endpoint (Interface)                                          730  hours                  $9.49
+
+ [1mmodule.vpc.aws_vpc_endpoint.ecr["ecr.dkr"][22m
+ [2m├─[22m Data processed (first 1PB)                          Monthly cost depends on usage: $0.01 per GB
+ [2m└─[22m Endpoint (Interface)                                          730  hours                  $9.49
+
+ [1mmodule.vpc.aws_vpc_endpoint.ssm_family["ec2messages"][22m
+ [2m├─[22m Data processed (first 1PB)                          Monthly cost depends on usage: $0.01 per GB
+ [2m└─[22m Endpoint (Interface)                                          730  hours                  $9.49
+
+ [1mmodule.vpc.aws_vpc_endpoint.ssm_family["ssm"][22m
+ [2m├─[22m Data processed (first 1PB)                          Monthly cost depends on usage: $0.01 per GB
+ [2m└─[22m Endpoint (Interface)                                          730  hours                  $9.49
+
+ [1mmodule.vpc.aws_vpc_endpoint.ssm_family["ssmmessages"][22m
+ [2m├─[22m Data processed (first 1PB)                          Monthly cost depends on usage: $0.01 per GB
+ [2m└─[22m Endpoint (Interface)                                          730  hours                  $9.49
+
+ [1mmodule.vpc.aws_instance.nat[22m
+ [2m├─[22m Instance usage (Linux/UNIX, on-demand, t4g.nano)              730  hours                  $3.87
+ [2m└─[22m root_block_device
+ [2m   └─[22m Storage (general purpose SSD, gp3)                           8  GB                     $0.77
+
+[1m OVERALL TOTAL[22m                                                                              $52.09
+
+*Usage costs can be estimated by updating Infracost Cloud settings, see docs for other options.
+
+──────────────────────────────────
+31 cloud resources were detected:
+∙ 6 were estimated
+∙ 25 were free
+
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━┳━━━━━━━━━━━━┓
+┃ Project                                                          ┃ Baseline cost ┃ Usage cost* ┃ Total cost ┃
+┣━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╋━━━━━━━━━━━━━━━╋━━━━━━━━━━━━━╋━━━━━━━━━━━━┫
+┃ taichenjie/platform10/infra/ter...m/environments/dev/tfplan.json ┃           $52 ┃           - ┃        $52 ┃
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┻━━━━━━━━━━━━━━━┻━━━━━━━━━━━━━┻━━━━━━━━━━━━┛

@@ -13,12 +13,12 @@ so that private subnet workloads can reach those AWS APIs without
 going through the NAT instance and out to the public internet.
 
 Interface endpoints are billed per AZ per hour. At ap-southeast-1 rates:
-- approximately $0.011 per endpoint per AZ per hour
+- approximately $0.013 per endpoint per AZ per hour
 - $0.01/GB data processing
 
 For 5 interface endpoints:
-- One AZ: 5 × 730h × $0.011 = ~$40/mo if running 24/7
-- Both AZs: 5 × 2 × 730h × $0.011 = ~$80/mo if running 24/7
+- One AZ: 5 × 730h × $0.013 = ~$47/mo if running 24/7
+- Both AZs: 5 × 2 × 730h × $0.013 = ~$95/mo if running 24/7
 
 Either way, 24/7 runtime breaks the sub-$10/mo budget. The
 apply/destroy discipline (network exists only during build sessions)
@@ -38,7 +38,7 @@ gateway endpoints are not AZ-scoped.
 I considered three alternatives.
 
 **Both AZs (HA placement).** Rejected for two reasons. First, it
-doubles the cost (~$80/mo vs ~$40/mo at 24/7). Second, the NAT
+doubles the cost (~$95/mo vs ~$47/mo at 24/7). Second, the NAT
 instance is already single-AZ in AZ1 (per ADR-001). If AZ1 fails,
 the NAT is gone, so endpoints in AZ2 would have no working NAT to
 serve as fallback for any non-endpoint traffic. Paying for two-AZ
@@ -73,7 +73,7 @@ matches the NAT instance's existing AZ1 dependency, so it does not
 add a new failure mode.
 
 **Cost still significant.** Even single-AZ, 5 interface endpoints
-cost ~$40/mo at 24/7 — well above the sub-$10/mo budget. The
+cost ~$47/mo at 24/7 — well above the sub-$10/mo budget. The
 apply/destroy discipline (build only exists during work sessions)
 is what keeps the actual monthly invoice low.
 
@@ -88,7 +88,7 @@ the following, in order:
 
 2. **Two-AZ endpoint placement.** Once the NAT is HA, place each
    interface endpoint set in both AZs. Cost approximately doubles
-   to ~$80/mo for the endpoint set, which production budgets
+   to ~$95/mo for the endpoint set, which production budgets
    accept as the cost of removing the AZ-level dependency.
 
 3. **VPC endpoint policies.** Add resource policies to the endpoints
@@ -100,4 +100,5 @@ the following, in order:
 
 - Implementation: `infra/terraform/modules/vpc/main.tf` (aws_vpc_endpoint blocks for ssm_family and ecr)
 - Related: ADR-001 (NAT instance single-AZ trade-off — same shape of decision)
+- Verified pricing source: `docs/cost/m1-baseline.txt` (Infracost report, run against the Q1 plan)
 - AWS pricing: https://aws.amazon.com/privatelink/pricing/

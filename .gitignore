@@ -33,3 +33,8 @@ Thumbs.db
 .vscode/
 .idea/
 *.swp
+
+# Terraform plan files — same sensitivity as state, ephemeral, generated
+tfplan
+tfplan.*
+*.tfplan
