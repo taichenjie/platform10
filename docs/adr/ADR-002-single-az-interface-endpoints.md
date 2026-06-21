@@ -20,16 +20,16 @@ For 5 interface endpoints:
 - One AZ: 5 × 730h × $0.013 = ~$47/mo if running 24/7
 - Both AZs: 5 × 2 × 730h × $0.013 = ~$95/mo if running 24/7
 
-Either way, 24/7 runtime breaks the sub-$10/mo budget. The
+This shows that 24/7 runtime breaks the sub-$10/mo budget. The
 apply/destroy discipline (network exists only during build sessions)
-is what keeps the actual invoice low. The choice to make here is to
-place my interface endpoints in one AZ or two AZs, which will be
+is what keeps the actual invoice low. The choice to make here is whether
+to place my interface endpoints in one AZ or two AZs, which will be
 covered below.
 
 ## Decision
 
 I chose to place all 5 interface VPC endpoints (3 SSM + 2 ECR) in
-a single AZ — private-az1 only — rather than across both AZs.
+a single AZ — private-az1 only, rather than across both AZs.
 The S3 gateway endpoint is unaffected by this decision because
 gateway endpoints are not AZ-scoped.
 
@@ -46,8 +46,8 @@ endpoints on top of a single-AZ NAT is paying twice for the same
 failure mode.
 
 **Skip interface endpoints entirely (route SSM/ECR through NAT).**
-Rejected. My project Q1 architecture lists VPC endpoints for
-S3/SSM/ECR as a deliverable, with the rationale of keeping internal
+Rejected. I want VPC endpoints for S3/SSM/ECR as a explicit security 
+deliverable, with the rationale of keeping internal
 AWS API traffic off the public internet. Going through the NAT
 exposes those API calls to the public path, which removes the
 data-exfiltration-path-closure property the endpoints exist to
@@ -65,9 +65,9 @@ volumes.
 **Cross-AZ traffic for private-az2 workloads.** Anything running in
 private-az2 that calls SSM or ECR resolves the endpoint DNS to the
 ENI in private-az1. AWS charges $0.01/GB for cross-AZ data transfer,
-which is negligible for SSM/ECR's low traffic volumes but is real.
+which is negligible for SSM/ECR's low traffic volumes, but still exists.
 
-**Single point of failure (per AZ).** If private-az1 has an outage,
+**Single point of failure (per AZ).** If private-az1 is down,
 every workload in either AZ loses SSM access and ECR access. This
 matches the NAT instance's existing AZ1 dependency, so it does not
 add a new failure mode.
