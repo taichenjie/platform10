@@ -46,7 +46,7 @@ endpoints on top of a single-AZ NAT is paying twice for the same
 failure mode.
 
 **Skip interface endpoints entirely (route SSM/ECR through NAT).**
-Rejected. I want VPC endpoints for S3/SSM/ECR as a explicit security 
+Rejected. I want VPC endpoints for S3/SSM/ECR as a explicit security
 deliverable, with the rationale of keeping internal
 AWS API traffic off the public internet. Going through the NAT
 exposes those API calls to the public path, which removes the
