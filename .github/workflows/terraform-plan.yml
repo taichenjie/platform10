@@ -108,15 +108,19 @@ jobs:
       #    We save the plan to a file for future Infracost integration.
       # -------------------------------------------------------
       - name: Terraform plan
+        id: plan
+        continue-on-error: true
         run: |
+          set +e
           terraform plan \
             -var-file=${{ env.TF_VAR_FILE }} \
             -input=false \
             -lock=false \
             -detailed-exitcode \
             -out=tfplan.binary
-        continue-on-error: true
-        id: plan
+          EXITCODE=$?
+          echo "exitcode=$EXITCODE" >> "$GITHUB_OUTPUT"
+          exit $EXITCODE
 
       # -------------------------------------------------------
       # 8. Convert plan to JSON for downstream tools (Infracost,
@@ -134,5 +138,7 @@ jobs:
       #    step could still run, but we check the real result here.
       # -------------------------------------------------------
       - name: Check plan outcome
-        if: steps.plan.outputs.exitcode == '1'
-        run: exit 1
+        if: steps.plan.outputs.exitcode == 1
+        run: |
+          echo "::error::Terraform plan failed with exit code 1"
+          exit 1
