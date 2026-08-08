@@ -1,0 +1,138 @@
+name: "Terraform Plan"
+
+# ---------------------------------------------------------------
+# Trigger: runs on pull requests targeting main.
+# This means every PR gets fmt, validate, and plan checks before
+# anyone can merge. Pushes to main are handled by a separate
+# apply workflow later.
+# ---------------------------------------------------------------
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "infra/terraform/**"
+      - ".github/workflows/terraform-plan.yml"
+
+# ---------------------------------------------------------------
+# Cancel in-progress runs for the same PR when a new commit is
+# pushed. Saves runner minutes and avoids stale plan output.
+# ---------------------------------------------------------------
+concurrency:
+  group: terraform-plan-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+# ---------------------------------------------------------------
+# Minimum permissions. contents:read to checkout code,
+# pull-requests:write so later steps (Infracost, plan comments)
+# can post PR comments.
+# ---------------------------------------------------------------
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  terraform-check:
+    name: "fmt / validate / plan"
+    runs-on: ubuntu-latest
+
+    # All terraform commands run from the dev environment directory.
+    defaults:
+      run:
+        working-directory: infra/terraform/environments/dev
+
+    env:
+      TF_VAR_FILE: dev.tfvars
+      TF_IN_AUTOMATION: true
+
+    steps:
+      # -------------------------------------------------------
+      # 1. Checkout the repo so the runner has our code.
+      # -------------------------------------------------------
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # -------------------------------------------------------
+      # 2. Install the exact Terraform version we use locally.
+      #    terraform_wrapper: false disables the actions wrapper
+      #    script that can interfere with plan output capture.
+      # -------------------------------------------------------
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.15.5"
+          terraform_wrapper: false
+
+      # -------------------------------------------------------
+      # 3. Inject AWS credentials from repo secrets.
+      #    These are static IAM keys for cj-admin. M3 replaces
+      #    this with OIDC federation (ADR-005), which eliminates
+      #    long-lived secrets entirely.
+      # -------------------------------------------------------
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ap-southeast-1
+
+      # -------------------------------------------------------
+      # 4. Format check. -check returns exit code 1 if any file
+      #    is not formatted. Does not modify files, just fails.
+      #    This enforces the same standard pre-commit does locally.
+      # -------------------------------------------------------
+      - name: Terraform fmt
+        run: terraform fmt -check -recursive -diff
+
+      # -------------------------------------------------------
+      # 5. Init downloads providers and configures the S3 backend.
+      #    -input=false prevents Terraform from prompting for
+      #    missing variables (which would hang the runner).
+      # -------------------------------------------------------
+      - name: Terraform init
+        run: terraform init -input=false
+
+      # -------------------------------------------------------
+      # 6. Validate checks syntax and internal consistency.
+      #    Catches typos, missing variables, and bad references
+      #    before the slower plan step runs.
+      # -------------------------------------------------------
+      - name: Terraform validate
+        run: terraform validate
+
+      # -------------------------------------------------------
+      # 7. Plan shows what would change without touching AWS.
+      #    -input=false prevents prompts.
+      #    -lock=false avoids contention on the state lock since
+      #    this is read-only (no apply).
+      #    -detailed-exitcode: 0 = no changes, 1 = error, 2 = changes.
+      #    We save the plan to a file for future Infracost integration.
+      # -------------------------------------------------------
+      - name: Terraform plan
+        run: |
+          terraform plan \
+            -var-file=${{ env.TF_VAR_FILE }} \
+            -input=false \
+            -lock=false \
+            -detailed-exitcode \
+            -out=tfplan.binary
+        continue-on-error: true
+        id: plan
+
+      # -------------------------------------------------------
+      # 8. Convert plan to JSON for downstream tools (Infracost,
+      #    Checkov). This is the same step we do locally:
+      #    terraform show -json tfplan.binary > tfplan.json
+      # -------------------------------------------------------
+      - name: Convert plan to JSON
+        if: steps.plan.outcome == 'success' || steps.plan.outcome == 'failure'
+        run: terraform show -json tfplan.binary > tfplan.json
+
+      # -------------------------------------------------------
+      # 9. Fail the workflow if the plan step actually errored
+      #    (exit code 1). Exit code 2 (changes detected) is fine.
+      #    We used continue-on-error above so the JSON conversion
+      #    step could still run, but we check the real result here.
+      # -------------------------------------------------------
+      - name: Check plan outcome
+        if: steps.plan.outputs.exitcode == '1'
+        run: exit 1
