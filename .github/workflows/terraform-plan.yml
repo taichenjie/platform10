@@ -142,3 +142,39 @@ jobs:
         run: |
           echo "::error::Terraform plan failed with exit code 1"
           exit 1
+
+      # -------------------------------------------------------
+      # 10. Install Infracost CLI on the runner.
+      # -------------------------------------------------------
+      - name: Setup Infracost
+        uses: infracost/actions/setup@v3
+        with:
+          api-key: ${{ secrets.INFRACOST_API_KEY }}
+
+      # -------------------------------------------------------
+      # 11. Generate the cost estimate from the plan JSON.
+      #     --format json writes a machine-readable breakdown
+      #     that the diff and comment steps consume.
+      #     This is the "after" cost snapshot for this PR.
+      # -------------------------------------------------------
+      - name: Infracost breakdown
+        run: |
+          infracost breakdown \
+            --path=tfplan.json \
+            --format=json \
+            --out-file=infracost.json
+
+      # -------------------------------------------------------
+      # 12. Post (or update) a single cost comment on the PR.
+      #     --behavior=update edits the existing comment instead
+      #     of stacking a new one on every push.
+      #     Compares against the committed m1-baseline as context.
+      # -------------------------------------------------------
+      - name: Post Infracost comment
+        run: |
+          infracost comment github \
+            --path=infracost.json \
+            --repo=$GITHUB_REPOSITORY \
+            --pull-request=${{ github.event.pull_request.number }} \
+            --github-token=${{ secrets.GITHUB_TOKEN }} \
+            --behavior=update
