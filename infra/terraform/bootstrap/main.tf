@@ -72,4 +72,17 @@ resource "aws_s3_bucket_lifecycle_configuration" "terraform_state" {
       noncurrent_days = 90
     }
   }
+
+  # Abort incomplete multipart uploads after 7 days. A failed upload leaves
+  # orphaned parts that cost storage and never show up in the object list.
+  rule {
+    id     = "abort-incomplete-multipart-uploads"
+    status = "Enabled"
+
+    filter {}
+
+    abort_incomplete_multipart_upload {
+      days_after_initiation = 7
+    }
+  }
 }
