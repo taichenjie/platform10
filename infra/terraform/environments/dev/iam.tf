@@ -13,8 +13,26 @@
 # impossible, even if a future identity policy is misconfigured.
 # ---------------------------------------------------------------------------
 data "aws_iam_policy_document" "permission_boundary" {
+  # Checkov skips. This is a PERMISSION BOUNDARY, not an identity policy.
+  # The "Allow *" baseline is a ceiling, not a grant. It gives no principal
+  # any permission on its own. The explicit Deny statements below constrain
+  # the ceiling. Checkov reads statements in isolation and cannot tell a
+  # boundary from an identity policy, so it flags the wildcards as admin.
+  #
+  # REMOVE THESE SKIPS IF this policy is ever attached to a principal as an
+  # identity policy (aws_iam_role_policy_attachment, aws_iam_user_policy, or
+  # inline) instead of as a permissions_boundary. Then "Allow *" is a real
+  # admin grant and every finding is valid.
+  # checkov:skip=CKV_AWS_1:Boundary ceiling, not an identity grant. See note above.
+  # checkov:skip=CKV_AWS_49:Wildcard action is the boundary ceiling, capped by explicit denies.
+  # checkov:skip=CKV_AWS_107:Credential-exposure actions are explicitly denied in this same policy.
+  # checkov:skip=CKV_AWS_108:Data-exfiltration concern does not apply to a boundary ceiling.
+  # checkov:skip=CKV_AWS_109:Permissions-management actions are explicitly denied in this same policy.
+  # checkov:skip=CKV_AWS_110:Escalation actions are explicitly denied in this same policy.
+  # checkov:skip=CKV_AWS_111:Write access is the boundary ceiling, capped by explicit denies.
+  # checkov:skip=CKV_AWS_356:Wildcard resource is required for a boundary ceiling.
+  # checkov:skip=CKV2_AWS_40:Full-IAM-privileges finding on a boundary ceiling, not an identity grant. IAM escalation actions are explicitly denied in this same policy. Same rationale as the CKV_AWS_1/49/107-111/356 skips above.
   # Baseline: the ceiling is whatever the identity policy grants.
-  # The explicit Deny statements below carve out the dangerous parts.
   statement {
     sid       = "AllowBaseline"
     effect    = "Allow"

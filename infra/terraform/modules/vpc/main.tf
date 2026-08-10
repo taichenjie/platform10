@@ -30,6 +30,7 @@ locals {
 # The VPC.
 # ---------------------------------------------------------------------------
 resource "aws_vpc" "this" {
+  # checkov:skip=CKV2_AWS_11:VPC flow logs bill continuously (ingestion + storage). Not justified for a VPC under apply/destroy discipline. REMOVE IF the VPC becomes long-running, then enable flow logs to a log bucket for network audit.
   cidr_block           = var.vpc_cidr
   instance_tenancy     = "default"
   enable_dns_support   = var.enable_dns_support
@@ -166,6 +167,8 @@ resource "aws_vpc_security_group_egress_rule" "nat_to_internet" {
 # belong to other hosts. Turning the check off is what makes NAT possible.
 # ---------------------------------------------------------------------------
 resource "aws_instance" "nat" {
+  # checkov:skip=CKV_AWS_135:t4g.nano does not support EBS optimization. Not configurable on this instance family. REMOVE IF the NAT moves to an instance family that supports it (e.g. m-series).
+  # checkov:skip=CKV_AWS_126:Detailed (1-min) monitoring costs ~$2.10/mo and is unnecessary for a short-lived NAT under apply/destroy discipline. REMOVE IF the NAT becomes long-running or 1-min metrics are needed for an incident.
   ami                         = data.aws_ssm_parameter.al2023_arm64.value
   instance_type               = "t4g.nano"
   subnet_id                   = aws_subnet.public["public-az1"].id
@@ -377,5 +380,19 @@ resource "aws_vpc_endpoint" "ecr" {
 
   tags = {
     Name = "${var.vpc_name}-vpce-${each.value}"
+  }
+}
+
+# AWS auto-creates a default security group with every VPC. We never use it
+# because every resource gets an explicit SG, but an unmanaged default SG is
+# a latent risk: anything launched without a specified SG would inherit it.
+# This resource adopts the default SG and defines no ingress or egress rules,
+# so it denies all traffic. Nothing new is created; Terraform takes over the
+# existing group that AWS already made.
+resource "aws_default_security_group" "this" {
+  vpc_id = aws_vpc.this.id
+
+  tags = {
+    Name = "${var.vpc_name}-default-locked"
   }
 }
