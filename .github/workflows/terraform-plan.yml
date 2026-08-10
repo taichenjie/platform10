@@ -178,3 +178,22 @@ jobs:
             --pull-request=${{ github.event.pull_request.number }} \
             --github-token=${{ secrets.GITHUB_TOKEN }} \
             --behavior=update
+
+      # -------------------------------------------------------
+      # 13. Checkov security scan against the plan JSON.
+      #     soft_fail: true means findings are reported but do
+      #     NOT block the PR yet. This is deliberate for the
+      #     first run: we triage every finding, fix or suppress
+      #     each one, then flip to hard-fail in a later commit.
+      #     Scanning the plan JSON (not raw .tf) catches
+      #     resolved values like computed CIDRs and module outputs.
+      # -------------------------------------------------------
+      - name: Checkov security scan
+        id: checkov
+        uses: bridgecrewio/checkov-action@v12
+        with:
+          file: infra/terraform/environments/dev/tfplan.json
+          framework: terraform_plan
+          soft_fail: true
+          output_format: cli
+          download_external_modules: false
