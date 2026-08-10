@@ -30,6 +30,7 @@ locals {
 # The VPC.
 # ---------------------------------------------------------------------------
 resource "aws_vpc" "this" {
+  # checkov:skip=CKV2_AWS_11:VPC flow logs bill continuously (ingestion + storage). Not justified for a VPC under apply/destroy discipline. REMOVE IF the VPC becomes long-running, then enable flow logs to a log bucket for network audit.
   cidr_block           = var.vpc_cidr
   instance_tenancy     = "default"
   enable_dns_support   = var.enable_dns_support
