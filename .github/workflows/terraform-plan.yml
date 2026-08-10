@@ -192,8 +192,8 @@ jobs:
         id: checkov
         uses: bridgecrewio/checkov-action@v12
         with:
-          file: infra/terraform/environments/dev/tfplan.json
-          framework: terraform_plan
+          directory: infra/terraform
+          framework: terraform
           soft_fail: true
           output_format: cli
           download_external_modules: false
