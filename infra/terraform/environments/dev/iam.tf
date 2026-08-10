@@ -31,6 +31,7 @@ data "aws_iam_policy_document" "permission_boundary" {
   # checkov:skip=CKV_AWS_110:Escalation actions are explicitly denied in this same policy.
   # checkov:skip=CKV_AWS_111:Write access is the boundary ceiling, capped by explicit denies.
   # checkov:skip=CKV_AWS_356:Wildcard resource is required for a boundary ceiling.
+  # checkov:skip=CKV2_AWS_40:Full-IAM-privileges finding on a boundary ceiling, not an identity grant. IAM escalation actions are explicitly denied in this same policy. Same rationale as the CKV_AWS_1/49/107-111/356 skips above.
   # Baseline: the ceiling is whatever the identity policy grants.
   statement {
     sid       = "AllowBaseline"

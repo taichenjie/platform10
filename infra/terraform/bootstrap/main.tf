@@ -55,3 +55,21 @@ resource "aws_s3_bucket_public_access_block" "terraform_state" {
 
 # Account ID lookup for globally-unique bucket naming.
 data "aws_caller_identity" "current" {}
+
+# Expire old state versions after 90 days. Versioning keeps every write so
+# a bad state can be rolled back, but without this the old versions pile up
+# forever. 90 days is a long rollback window while still bounding growth.
+resource "aws_s3_bucket_lifecycle_configuration" "terraform_state" {
+  bucket = aws_s3_bucket.terraform_state.id
+
+  rule {
+    id     = "expire-noncurrent-state-versions"
+    status = "Enabled"
+
+    filter {}
+
+    noncurrent_version_expiration {
+      noncurrent_days = 90
+    }
+  }
+}
