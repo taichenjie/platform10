@@ -10,7 +10,7 @@ module "vpc" {
 
   vpc_cidr                  = var.vpc_cidr
   vpc_name                  = var.vpc_name
-  nat_instance_profile_name = aws_iam_instance_profile.ec2_ssm.name
+  nat_instance_profile_name = module.iam.ec2_ssm_instance_profile_name
   # enable_dns_support / enable_dns_hostnames intentionally omitted:
   # the module defaults them to true, which is required for private DNS on
   # the interface VPC endpoints (SSM/ECR) added later this month.
