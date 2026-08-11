@@ -109,7 +109,7 @@ data "aws_iam_policy_document" "permission_boundary" {
 
 resource "aws_iam_policy" "permission_boundary" {
   name        = "${var.name_prefix}-permission-boundary"
-  description = "Permission boundary for all non-root principals. Caps the maximum permissions any bounded role can effectively have, regardless of attached identity policies."
+  description = "Permission boundary for all non-root principals in dev. Caps the maximum permissions any bounded role can effectively have, regardless of attached identity policies."
   policy      = data.aws_iam_policy_document.permission_boundary.json
 
   tags = {
@@ -140,7 +140,7 @@ data "aws_iam_policy_document" "ec2_assume_role" {
 
 resource "aws_iam_role" "ec2_ssm" {
   name                 = "${var.name_prefix}-ec2-ssm-role"
-  description          = "Allows EC2 instances to be reached via SSM Session Manager. Bounded by the permission boundary."
+  description          = "Allows EC2 instances to be reached via SSM Session Manager. Bounded by the platform10 permission boundary."
   assume_role_policy   = data.aws_iam_policy_document.ec2_assume_role.json
   permissions_boundary = aws_iam_policy.permission_boundary.arn
 
