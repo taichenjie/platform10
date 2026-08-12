@@ -169,14 +169,13 @@ resource "aws_vpc_security_group_egress_rule" "nat_to_internet" {
 resource "aws_instance" "nat" {
   # checkov:skip=CKV_AWS_135:t4g.nano does not support EBS optimization. Not configurable on this instance family. REMOVE IF the NAT moves to an instance family that supports it (e.g. m-series).
   # checkov:skip=CKV_AWS_126:Detailed (1-min) monitoring costs ~$2.10/mo and is unnecessary for a short-lived NAT under apply/destroy discipline. REMOVE IF the NAT becomes long-running or 1-min metrics are needed for an incident.
-  ami                         = data.aws_ssm_parameter.al2023_arm64.value
-  instance_type               = "t4g.nano"
-  subnet_id                   = aws_subnet.public["public-az1"].id
-  private_ip                  = "10.0.0.10"
-  vpc_security_group_ids      = [aws_security_group.nat.id]
-  source_dest_check           = false
-  iam_instance_profile        = var.nat_instance_profile_name
-  associate_public_ip_address = false
+  ami                    = data.aws_ssm_parameter.al2023_arm64.value
+  instance_type          = "t4g.nano"
+  subnet_id              = aws_subnet.public["public-az1"].id
+  private_ip             = "10.0.0.10"
+  vpc_security_group_ids = [aws_security_group.nat.id]
+  source_dest_check      = false
+  iam_instance_profile   = var.nat_instance_profile_name
 
   user_data = templatefile("${path.module}/files/nat-userdata.sh", {
     vpc_cidr = var.vpc_cidr
