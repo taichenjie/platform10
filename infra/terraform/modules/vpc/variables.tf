@@ -30,8 +30,8 @@ variable "enable_dns_hostnames" {
   default     = true
 }
 
-variable "nat_instance_profile_name" {
-  description = "Name of an IAM instance profile to attach to the NAT instance. Required for SSM Session Manager access. Defaults to null (no profile)."
+
+variable "nat_network_interface_id" {
+  description = "Primary network interface ID of the NAT instance. Used as the target for the private route table default route (0.0.0.0/0)."
   type        = string
-  default     = null
 }
