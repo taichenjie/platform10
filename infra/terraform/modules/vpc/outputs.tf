@@ -22,3 +22,13 @@ output "private_subnet_definitions" {
   description = "Map of private subnet definitions (cidr + az), keyed by name. Drives subnet resource creation."
   value       = local.private_subnets
 }
+
+output "public_subnet_ids" {
+  description = "Map of public subnet IDs keyed by name. Used by compute module to place instances."
+  value       = { for k, v in aws_subnet.public : k => v.id }
+}
+
+output "private_subnet_ids" {
+  description = "Map of private subnet IDs keyed by name. Used by endpoint placement and future workloads."
+  value       = { for k, v in aws_subnet.private : k => v.id }
+}
