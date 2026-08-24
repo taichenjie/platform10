@@ -16,6 +16,7 @@ locals {
   github_oidc_allowed_subs = [
     "repo:taichenjie/platform10:ref:refs/heads/main",
     "repo:taichenjie/platform10:pull_request",
+    "repo:taichenjie/platform10:environment:production-apply",
   ]
 }
 
