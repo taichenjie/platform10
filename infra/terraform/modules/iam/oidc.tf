@@ -199,6 +199,18 @@ data "aws_iam_policy_document" "github_actions_permissions" {
     ]
   }
 
+  # SSM parameter read for AMI lookups. The compute module resolves
+  # the latest AL2023 AMI via an SSM public parameter.
+  statement {
+    sid    = "SSMParameterRead"
+    effect = "Allow"
+    actions = [
+      "ssm:GetParameter",
+      "ssm:GetParameters",
+    ]
+    resources = ["*"]
+  }
+
   # STS caller identity check. The AWS provider calls this on init
   # to verify credentials are valid.
   statement {
