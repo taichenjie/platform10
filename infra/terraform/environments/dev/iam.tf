@@ -58,3 +58,7 @@ output "ec2_ssm_instance_profile_name" {
   description = "Name of the EC2 SSM instance profile."
   value       = module.iam.ec2_ssm_instance_profile_name
 }
+output "github_actions_ci_role_arn" {
+  description = "ARN of the GitHub Actions CI role for OIDC federation."
+  value       = module.iam.github_actions_ci_role_arn
+}
