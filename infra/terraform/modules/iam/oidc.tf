@@ -56,12 +56,12 @@ data "aws_iam_policy_document" "github_actions_trust" {
 # policy change, not an unaudited scope creep.
 # ---------------------------------------------------------------
 
-# checkov:skip=CKV_AWS_108:S3 is scoped to the state bucket. SSM reads public AMI parameters. No unbounded data access.
-# checkov:skip=CKV_AWS_109:IAM management actions require resource "*" because target ARNs do not exist before creation. Permission boundary caps privilege.
-# checkov:skip=CKV_AWS_110:iam:PassRole and iam:AttachRolePolicy are required for Terraform to manage IAM resources. Permission boundary prevents escalation beyond its deny list.
-# checkov:skip=CKV_AWS_111:EC2 and IAM write actions do not support resource-level restrictions for create operations. Permission boundary is the constraint.
-# checkov:skip=CKV_AWS_356:EC2 and IAM actions cannot be scoped to specific resources at creation time. S3 is already resource-scoped to the state bucket.
 data "aws_iam_policy_document" "github_actions_permissions" {
+  # checkov:skip=CKV_AWS_108:S3 is scoped to the state bucket. SSM reads public AMI parameters. No unbounded data access.
+  # checkov:skip=CKV_AWS_109:IAM management actions require resource "*" because target ARNs do not exist before creation. Permission boundary caps privilege.
+  # checkov:skip=CKV_AWS_110:iam:PassRole and iam:AttachRolePolicy are required for Terraform to manage IAM resources. Permission boundary prevents escalation beyond its deny list.
+  # checkov:skip=CKV_AWS_111:EC2 and IAM write actions do not support resource-level restrictions for create operations. Permission boundary is the constraint.
+  # checkov:skip=CKV_AWS_356:EC2 and IAM actions cannot be scoped to specific resources at creation time. S3 is already resource-scoped to the state bucket.
 
   # EC2 and VPC management.
   # Most EC2/VPC actions do not support resource-level restrictions.
