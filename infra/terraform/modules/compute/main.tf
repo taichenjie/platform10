@@ -48,7 +48,7 @@ resource "aws_instance" "nat" {
   # checkov:skip=CKV_AWS_135:t4g.nano does not support EBS optimization. Not configurable on this instance family. REMOVE IF the NAT moves to an instance family that supports it (e.g. m-series).
   # checkov:skip=CKV_AWS_126:Detailed (1-min) monitoring costs ~$2.10/mo and is unnecessary for a short-lived NAT under apply/destroy discipline. REMOVE IF the NAT becomes long-running or 1-min metrics are needed for an incident.
   ami                    = data.aws_ssm_parameter.al2023_arm64.value
-  instance_type          = "t4g.nano"
+  instance_type          = "t4g.medium"
   subnet_id              = var.subnet_id
   private_ip             = var.private_ip
   vpc_security_group_ids = [aws_security_group.nat.id]
