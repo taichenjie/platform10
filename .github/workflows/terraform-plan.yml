@@ -98,6 +98,21 @@ jobs:
         run: terraform validate
 
       # -------------------------------------------------------
+      # -------------------------------------------------------
+      # 7. tflint checks for Terraform best-practice violations
+      #    that validate does not catch (naming conventions,
+      #    required version blocks). Matches the same config
+      #    pre-commit runs locally.
+      # -------------------------------------------------------
+      - name: Setup tflint
+        uses: terraform-linters/setup-tflint@v4
+
+      - name: Run tflint
+        working-directory: infra/terraform
+        run: |
+          tflint --init
+          tflint --recursive --config "$GITHUB_WORKSPACE/.tflint.hcl"
+
       # 7. Plan shows what would change without touching AWS.
       #    -input=false prevents prompts.
       #    -lock=false avoids contention on the state lock since
