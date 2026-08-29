@@ -137,7 +137,8 @@ bootstrap/              S3 remote state backend (applied once, never destroyed)
 
 environments/dev/       The dev environment: calls modules, holds IAM + backend config
 
-modules/vpc/            Reusable VPC module: network, NAT, endpoints
+modules/vpc/            Reusable VPC module: network, endpoints
+modules/compute/        Reusable compute module: NAT instance, SG, EIP
 
 files/                NAT instance cloud-init script
 
