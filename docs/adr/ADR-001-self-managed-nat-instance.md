@@ -101,6 +101,6 @@ goes down.
 ## Links
 
 - Implementation: `infra/terraform/modules/compute/main.tf` (aws_instance.nat block)
-- User data script: `infra/terraform/modules/vpc/files/nat-userdata.sh`
+- User data script: `infra/terraform/modules/compute/files/nat-userdata.sh`
 - Related blog post (planned): "Frugal Cloud Architecture: Replacing the $32/Month NAT Gateway"
 - fck-nat: https://github.com/AndrewGuenther/fck-nat
