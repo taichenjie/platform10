@@ -29,7 +29,7 @@ would require.
 | CI auth | OIDC federation, short-lived STS credentials (no static keys) |
 | Code quality | tflint, Checkov (hard-fail), Infracost (cost-change visibility) |
 | State | S3 backend with native locking |
-| Secrets | IAM permission boundary on every non-root principal |
+| Access control | IAM permission boundary on every non-root principal |
 
 ## Planned (Q3-Q4)
 
@@ -41,7 +41,7 @@ would require.
 | Observability | Prometheus + Grafana + OpenTelemetry |
 | CD | ArgoCD (CI stays in GitHub Actions) |
 | Secrets | SOPS + age |
-| Workload | Ethereum/Solana pruned RPC node |
+| Workload | Python API (FastAPI) + Postgres, operated as a StatefulSet with tested backups |
 
 ## Quarter build status
 
@@ -173,6 +173,7 @@ All three should return nothing.
 │   ├── adr/                  # Architecture decision records (ADR-001 through ADR-005)
 │   ├── cost/                 # Infracost projections
 │   ├── evidence/             # CI verification artifacts (OIDC negative test)
+│   ├── research/             # Design research memos (ADR inputs)
 │   └── invoices/             # Real monthly AWS invoices
 ├── infra/terraform/
 │   ├── bootstrap/            # S3 remote state backend (applied once, never destroyed)
