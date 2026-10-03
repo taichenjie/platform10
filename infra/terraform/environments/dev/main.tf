@@ -25,5 +25,5 @@ module "compute" {
   vpc_id                = module.vpc.vpc_id
   vpc_cidr              = var.vpc_cidr
   subnet_id             = module.vpc.public_subnet_ids["public-az1"]
-  instance_profile_name = module.iam.ec2_ssm_instance_profile_name
+  instance_profile_name = data.aws_iam_instance_profile.ec2_ssm.name
 }
