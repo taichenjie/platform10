@@ -1,7 +1,7 @@
 # ADR-005: OIDC federation for GitHub Actions CI
 
 **Date:** 2026-08-27
-**Status:** Accepted
+**Status:** Accepted. Resource location amended by ADR-012.
 **Deciders:** CJ
 **Tags:** security, tooling
 
