@@ -16,6 +16,7 @@ resource "aws_launch_template" "server" {
   # Section 1: what to run on.
   image_id      = data.aws_ssm_parameter.al2023_arm64.value
   instance_type = var.instance_type
+  ebs_optimized = true
 
   # Standard credits: the node is throttled when burst credits run out,
   # instead of billing for extra CPU. No surprise charges.
