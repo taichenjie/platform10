@@ -1,0 +1,51 @@
+#!/bin/bash
+# K3s server bootstrap. Runs once on first boot, as root.
+# Terraform fills in k3s_version. Read the log through SSM:
+#   sudo cat /var/log/k3s-userdata.log
+
+# Block 1: stop on any error, and send all output to a log file.
+set -euo pipefail
+exec >> /var/log/k3s-userdata.log 2>&1
+echo "$(date -u) Starting K3s ${k3s_version} bootstrap"
+
+# Block 2: write K3s settings. K3s reads this file every time it starts.
+mkdir -p /etc/rancher/k3s
+cat > /etc/rancher/k3s/config.yaml <<'CONFIG'
+# Admin kubeconfig readable by root only.
+write-kubeconfig-mode: "0600"
+# Encrypt Secrets at rest in the datastore.
+secrets-encryption: true
+# Network policy enforcement comes from the embedded controller.
+# Never set disable-network-policy. It fails silently.
+# See docs/research/cni-posture-memo.md.
+CONFIG
+chmod 600 /etc/rancher/k3s/config.yaml
+
+# Block 3: download the K3s installer, pinned to the same version as the binary.
+# get.k3s.io always serves the latest installer. This URL never changes.
+curl -sfL --retry 5 --retry-delay 5 --retry-connrefused --max-time 60 \
+  "https://raw.githubusercontent.com/k3s-io/k3s/${k3s_version}/install.sh" \
+  -o /tmp/k3s-install.sh
+
+# Block 4: install K3s as a server (control plane and workloads on one node).
+# AL2023 runs SELinux in permissive mode. Skip the k3s-selinux package,
+# which needs an extra package repo we do not want on the node.
+INSTALL_K3S_VERSION="${k3s_version}" \
+INSTALL_K3S_SKIP_SELINUX_RPM=true \
+INSTALL_K3S_SELINUX_WARN=true \
+  sh /tmp/k3s-install.sh server
+rm -f /tmp/k3s-install.sh
+
+# Block 5: wait up to 3 minutes for the node to report Ready, then log the result.
+for i in $(seq 1 36); do
+  if /usr/local/bin/k3s kubectl get nodes --no-headers 2>/dev/null | grep -q ' Ready '; then
+    echo "$(date -u) Node Ready after $((i * 5)) seconds"
+    /usr/local/bin/k3s kubectl get nodes -o wide
+    exit 0
+  fi
+  sleep 5
+done
+
+echo "$(date -u) FAILED: node not Ready after 180 seconds"
+systemctl status k3s --no-pager || true
+exit 1
