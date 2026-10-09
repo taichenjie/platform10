@@ -135,57 +135,30 @@ data "aws_iam_policy_document" "github_actions_permissions" {
     resources = ["*"]
   }
 
-  # IAM management for roles, policies, instance profiles, OIDC provider.
+  # Dev reads one IAM resource, the SSM instance profile owned by bootstrap
+  # (data.aws_iam_instance_profile.ec2_ssm). All IAM writes moved to
+  # bootstrap on 3 Oct (ADR-012), so CI keeps this read and nothing else.
   statement {
-    sid    = "IAMManagement"
-    effect = "Allow"
-    actions = [
-      # Roles
-      "iam:CreateRole",
-      "iam:GetRole",
-      "iam:DeleteRole",
-      "iam:UpdateRole",
-      "iam:TagRole",
-      "iam:UntagRole",
-      "iam:PassRole",
-      "iam:ListRolePolicies",
-      "iam:ListAttachedRolePolicies",
-      "iam:ListInstanceProfilesForRole",
+    sid       = "IAMReadInstanceProfile"
+    effect    = "Allow"
+    actions   = ["iam:GetInstanceProfile"]
+    resources = [aws_iam_instance_profile.ec2_ssm.arn]
+  }
 
-      # Policies
-      "iam:CreatePolicy",
-      "iam:GetPolicy",
-      "iam:DeletePolicy",
-      "iam:GetPolicyVersion",
-      "iam:CreatePolicyVersion",
-      "iam:DeletePolicyVersion",
-      "iam:ListPolicyVersions",
-      "iam:TagPolicy",
-      "iam:UntagPolicy",
+  # The apply workflow launches EC2 with the SSM instance profile, which
+  # requires PassRole. Scoped to that one role, passed to EC2 only. The
+  # permission boundary carries the same exception (main.tf).
+  statement {
+    sid       = "PassEc2SsmRoleToEc2"
+    effect    = "Allow"
+    actions   = ["iam:PassRole"]
+    resources = [local.ec2_ssm_role_arn]
 
-      # Policy attachments
-      "iam:AttachRolePolicy",
-      "iam:DetachRolePolicy",
-
-      # Instance profiles
-      "iam:CreateInstanceProfile",
-      "iam:GetInstanceProfile",
-      "iam:DeleteInstanceProfile",
-      "iam:AddRoleToInstanceProfile",
-      "iam:RemoveRoleFromInstanceProfile",
-      "iam:TagInstanceProfile",
-      "iam:UntagInstanceProfile",
-
-      # OIDC provider (self-management)
-      "iam:CreateOpenIDConnectProvider",
-      "iam:GetOpenIDConnectProvider",
-      "iam:DeleteOpenIDConnectProvider",
-      "iam:UpdateOpenIDConnectProviderThumbprint",
-      "iam:TagOpenIDConnectProvider",
-      "iam:UntagOpenIDConnectProvider",
-      "iam:ListOpenIDConnectProviders",
-    ]
-    resources = ["*"]
+    condition {
+      test     = "StringEquals"
+      variable = "iam:PassedToService"
+      values   = ["ec2.amazonaws.com"]
+    }
   }
 
   # S3 state bucket access, scoped to environment state keys only.

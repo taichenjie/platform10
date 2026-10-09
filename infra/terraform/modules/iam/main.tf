@@ -12,6 +12,17 @@
 # policy. This is how privilege escalation is made structurally
 # impossible, even if a future identity policy is misconfigured.
 # ---------------------------------------------------------------------------
+data "aws_caller_identity" "current" {}
+
+locals {
+  ec2_ssm_role_name = "${var.name_prefix}-ec2-ssm-role"
+
+  # Built as a string, not aws_iam_role.ec2_ssm.arn. The role carries the
+  # permission boundary, and the boundary needs this ARN, so a resource
+  # reference would be a dependency cycle.
+  ec2_ssm_role_arn = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/${local.ec2_ssm_role_name}"
+}
+
 data "aws_iam_policy_document" "permission_boundary" {
   # Checkov skips. This is a PERMISSION BOUNDARY, not an identity policy.
   # The "Allow *" baseline is a ceiling, not a grant. It gives no principal
@@ -70,9 +81,32 @@ data "aws_iam_policy_document" "permission_boundary" {
       "iam:UpdateAccessKey",
       "iam:CreateLoginProfile",
       "iam:UpdateLoginProfile",
-      "iam:PassRole"
     ]
     resources = ["*"]
+  }
+
+  # PassRole is the one IAM write the apply pipeline needs: launching EC2
+  # with the SSM instance profile. Allow exactly that role, exactly to EC2.
+  # Two denies, because the role (resource) and the service (condition)
+  # are separate axes. A request must clear both.
+  statement {
+    sid           = "DenyPassRoleExceptEc2Ssm"
+    effect        = "Deny"
+    actions       = ["iam:PassRole"]
+    not_resources = [local.ec2_ssm_role_arn]
+  }
+
+  statement {
+    sid       = "DenyPassRoleToNonEc2"
+    effect    = "Deny"
+    actions   = ["iam:PassRole"]
+    resources = ["*"]
+
+    condition {
+      test     = "StringNotEquals"
+      variable = "iam:PassedToService"
+      values   = ["ec2.amazonaws.com"]
+    }
   }
 
   # Protect the boundary itself. A bounded principal cannot remove its
@@ -139,7 +173,7 @@ data "aws_iam_policy_document" "ec2_assume_role" {
 }
 
 resource "aws_iam_role" "ec2_ssm" {
-  name                 = "${var.name_prefix}-ec2-ssm-role"
+  name                 = local.ec2_ssm_role_name
   description          = "Allows EC2 instances to be reached via SSM Session Manager. Bounded by the platform10 permission boundary."
   assume_role_policy   = data.aws_iam_policy_document.ec2_assume_role.json
   permissions_boundary = aws_iam_policy.permission_boundary.arn
