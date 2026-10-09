@@ -188,21 +188,35 @@ data "aws_iam_policy_document" "github_actions_permissions" {
     resources = ["*"]
   }
 
-  # S3 state bucket access. Scoped to the state bucket only.
-  # Covers state file read/write and S3-native lock file operations.
+  # S3 state bucket access, scoped to environment state keys only.
+  # Bootstrap state (bootstrap/terraform.tfstate) lives in the same bucket
+  # and governs this role, so CI must never read, overwrite or delete it.
   statement {
-    sid    = "S3StateBucket"
+    sid       = "S3StateBucketList"
+    effect    = "Allow"
+    actions   = ["s3:ListBucket"]
+    resources = [local.state_bucket_arn]
+  }
+
+  # Covers environments/<env>/terraform.tfstate and its .tflock lock object
+  # (use_lockfile = true writes the lock beside the state file).
+  statement {
+    sid    = "S3EnvironmentStateObjects"
     effect = "Allow"
     actions = [
       "s3:GetObject",
       "s3:PutObject",
       "s3:DeleteObject",
-      "s3:ListBucket",
     ]
-    resources = [
-      local.state_bucket_arn,
-      "${local.state_bucket_arn}/*",
-    ]
+    resources = ["${local.state_bucket_arn}/environments/*"]
+  }
+
+  # Explicit deny survives any future broadening of the Allow above.
+  statement {
+    sid       = "DenyBootstrapState"
+    effect    = "Deny"
+    actions   = ["s3:*"]
+    resources = ["${local.state_bucket_arn}/bootstrap/*"]
   }
 
   # SSM parameter read for AMI lookups. The compute module resolves
