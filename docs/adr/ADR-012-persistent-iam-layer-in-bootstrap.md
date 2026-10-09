@@ -2,7 +2,7 @@
 
 **Date:** 2026-10-03
 **Status:** Accepted
-**Amended:** 2026-10-10 (bootstrap state moved to S3, CI denied bootstrap state)
+**Amended:** 2026-10-10 (bootstrap state moved to S3; CI denied bootstrap state; CI IAM trimmed and PassRole scoped)
 **Deciders:** CJ
 **Tags:** security, tooling, iam, state
 **Amends:** ADR-005 (where the OIDC resources live)
@@ -29,7 +29,7 @@ I kept `name_prefix = "platform10-dev"` so role, policy and profile names did no
 
 Dev state was empty when I made the change, so nothing had to move between state files. I applied bootstrap from the feature branch before pushing, so the PR's CI run could prove the role works. This is the one exception to merge-then-apply. Bootstrap is the layer CI cannot create for itself.
 
-Bootstrap state started on local disk. On 10 Oct I moved it to the S3 backend and denied CI access to it. See the amendment at the end.
+Bootstrap state started on local disk. On 10 Oct I moved it to the S3 backend and denied CI access to it. The same day I trimmed the CI policy's IAM actions and scoped `iam:PassRole`. See the two amendments at the end.
 
 ## Alternatives considered
 
@@ -56,9 +56,9 @@ Cleaner for a team. Rejected for now. It adds a third root module and a third ap
 
 ### Negative
 
-- Bootstrap sits outside CI. Nothing warns me if it drifts. On the same day I found a lifecycle rule merged on 10 Aug that was never applied. I now run `terraform plan` in bootstrap before changing it. Its state has been in S3 since 10 Oct (see the amendment below).
+- Bootstrap sits outside CI. Nothing warns me if it drifts. On the same day I found a lifecycle rule merged on 10 Aug that was never applied. I now run `terraform plan` in bootstrap before changing it. Its state has been in S3 since 10 Oct (see the first amendment).
 - CI policy changes, including the M5 launch template and EventBridge additions, are applied from my machine, not by CI.
-- The CI policy still lists IAM write actions that dev no longer needs. The boundary blocks them. I planned to remove them in the k3s-cluster PR, but that PR merged without the change. Removing them is a separate follow-up PR.
+- The CI policy kept IAM write actions dev no longer needed until 10 Oct. The boundary blocked escalation but not deletes. I planned to remove them in the k3s-cluster PR, but that PR merged without the change. They were removed on 10 Oct (see the second amendment).
 
 ### Production contrast
 
@@ -96,7 +96,7 @@ Rejected. Backups fix disk loss but not locking. They also depend on me remember
 
 #### Put the Deny in the bucket policy instead of the CI policy
 
-A bucket policy Deny is stronger in one way. CI cannot edit a bucket policy, but it might be able to edit its own identity policy. I kept the Deny in the CI policy for now, because every CI permission already lives and gets reviewed there. Whether the permission boundary stops CI from editing its own policy is open. The follow-up PR that narrows `IAMManagement` checks this with the policy simulator. If the boundary does not stop it, the Deny moves to a bucket policy.
+A bucket policy Deny is stronger in one way, because CI cannot edit a bucket policy. I kept the Deny in the CI policy. The permission boundary denies `iam:CreatePolicyVersion`, `iam:SetDefaultPolicyVersion` and the actions that remove or replace a boundary. So CI cannot edit its own policy or lift its own ceiling. I confirmed this on 10 Oct while trimming the CI policy (see the second amendment).
 
 #### Separate AWS account for CI identity and state
 
@@ -112,7 +112,7 @@ I narrowed CI's access first, in its own PR, and migrated second. In the other o
 4. Re-ran the latest CI plan workflow under v2. It passed.
 5. Added the `backend "s3"` block and ran `terraform init -migrate-state`. The destination key was empty.
 6. Verified 19 resources in remote state, no changes on `plan`, and no lock left behind.
-7. Deleted the local state files. I kept one offline copy until this PR merges.
+7. Deleted the local state files. I kept one offline copy until this PR merged.
 
 ### Rebuild in a new account
 
@@ -125,6 +125,50 @@ Bootstrap state now has locking, version history and encryption, and does not de
 Bootstrap still sits outside CI. The state move does not add drift detection. I still run `terraform plan` in bootstrap before changing it.
 
 Bootstrap changes still reach AWS before review. The PR records an apply that already happened.
+
+## Amendment, 10 Oct 2026: CI IAM trimmed and PassRole scoped
+
+### What I found
+
+The plan for the state-scope change showed the CI policy still had an `IAMManagement` statement with 35 IAM actions on `"*"`. It dated from when dev created IAM. Since 3 Oct, dev reads one IAM resource.
+
+The boundary already blocked escalation. It denies `iam:CreatePolicyVersion`, `iam:SetDefaultPolicyVersion`, `iam:AttachRolePolicy`, `iam:PutRolePolicy`, `iam:CreateRole`, and the actions that remove or replace a boundary. CI could not raise its own permissions. It could still delete the OIDC provider, delete or empty the instance profile, and update roles. The boundary stops escalation, not damage.
+
+The boundary also denied `iam:PassRole` on every resource with no condition. Launching EC2 with an instance profile requires `PassRole`. So the manual apply workflow could not launch instances. The policy simulator returned `explicitDeny`, matched only by the boundary.
+
+### Decision
+
+In the CI policy, `IAMManagement` is replaced by two statements. `iam:GetInstanceProfile` is allowed on the SSM instance profile only, for dev's data source. `iam:PassRole` is allowed on the EC2 SSM role only, with `iam:PassedToService` equal to `ec2.amazonaws.com`.
+
+In the boundary, `PassRole` left the broad Deny and became two narrower Denies. `DenyPassRoleExceptEc2Ssm` denies `PassRole` on every role except the SSM role, using `NotResource`. `DenyPassRoleToNonEc2` denies `PassRole` to any service other than EC2. A request has to clear both.
+
+The grant and the ceiling describe the same permission from both sides. Both use one local for the role ARN.
+
+The ARN is built as a string from `aws_caller_identity` and the role name, not from `aws_iam_role.ec2_ssm.arn`. The role carries the boundary, so a resource reference would be a dependency cycle. The role's `name` now comes from the same local, so the two cannot drift.
+
+### Alternatives considered
+
+#### Keep dev applies local and remove PassRole from CI
+
+Rejected. The apply workflow would stay in the repo unable to launch instances.
+
+#### Allow PassRole on any role, limited only by the service condition
+
+Rejected. CI could hand any EC2-assumable role to an instance and borrow its permissions. The role has to be named.
+
+### Verification
+
+The policy simulator gave six results. `PassRole` of the SSM role to EC2 is `allowed`. The same role to Lambda is `explicitDeny`. The CI role to EC2 is `explicitDeny`. `CreatePolicyVersion` on the CI policy is `explicitDeny`. `DeleteOpenIDConnectProvider` is `implicitDeny`, because the trim removed it. `GetInstanceProfile` on the SSM profile is `allowed`.
+
+I then ran the apply workflow. It went green and launched the NAT instance with the SSM instance profile, 28 resources in all. I destroyed dev locally and an orphan audit found nothing left.
+
+### Consequences
+
+- The manual apply workflow can launch instances.
+- CI can no longer delete or modify bootstrap IAM.
+- A module that passes a different role needs a new exception in both the boundary and the CI policy. That friction is intended.
+- Launch template and EventBridge actions are still missing from the CI policy. They are added when the k3s module is wired into dev.
+- Rollback points are CI policy v2 and boundary v1.
 
 ## Related
 
