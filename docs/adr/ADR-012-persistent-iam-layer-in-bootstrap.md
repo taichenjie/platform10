@@ -116,7 +116,7 @@ I narrowed CI's access first, in its own PR, and migrated second. In the other o
 
 ### Rebuild in a new account
 
-Comment out the `backend "s3"` block. Run `terraform init` and `terraform apply` with local state. Restore the block and run `terraform init -migrate-state`.
+Comment out the `backend "s3"` block. Update the bucket name in both backend blocks (`bootstrap` and `environments/dev`), because it contains the account ID and backend blocks cannot use variables. Run `terraform init` and `terraform apply` with local state. Restore the block and run `terraform init -migrate-state`.
 
 ### Consequences
 
