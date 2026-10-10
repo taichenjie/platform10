@@ -95,19 +95,34 @@ up for a work session and torn down after, not left running. See `docs/cost/`.
 - AWS Session Manager plugin (for the verify step)
 - Region: `ap-southeast-1`
 
-### One-time: create the state backend
+### One-time: bootstrap (state backend and IAM)
 
-The S3 bucket that holds Terraform state is created once by a separate bootstrap
-config. It is intentionally isolated so that destroying the dev environment never
-touches the state bucket.
+Bootstrap creates the S3 bucket that holds Terraform state, and all IAM: the
+permission boundary, the GitHub OIDC provider, the CI role and its policy, and
+the EC2 SSM role and instance profile. It is intentionally isolated so that
+destroying the dev environment never touches the state bucket or the identities
+CI and the instances depend on.
+
+Bootstrap is applied locally as `cj-admin`, never by CI (the CI role's boundary
+denies IAM writes), and it is never destroyed. Its own state lives in the same
+bucket at `bootstrap/terraform.tfstate`. See ADR-012.
+
+In an account that is already bootstrapped, plan before every change. CI does
+not plan bootstrap, so nothing else catches drift.
 
 ```bash
 cd infra/terraform/bootstrap
 terraform init
-terraform apply
+terraform plan
 ```
 
+Deploying into a new AWS account needs extra backend steps; see ADR-012.
+
 ### Deploy the network
+
+Requires bootstrap. Dev reads the SSM instance profile with a data source, so
+the plan fails at that lookup if bootstrap has not been applied. CI can also run
+this apply through the manual `terraform-apply.yml` workflow.
 
 ```bash
 cd infra/terraform/environments/dev
@@ -116,8 +131,8 @@ terraform plan -var-file=dev.tfvars -out=tfplan.binary
 terraform apply tfplan.binary
 ```
 
-Apply takes about 3 minutes. The SSM agent on the NAT instance may take an
-additional 1-2 minutes to register after apply completes.
+Apply takes about 3 minutes and creates 28 resources. The SSM agent on the NAT
+instance may take an additional 1-2 minutes to register after apply completes.
 
 ### Verify
 
@@ -143,7 +158,8 @@ exit
 ### Destroy
 
 The network is meant to be torn down after each work session. This is the cost
-control.
+control. Destroy dev only. Never destroy bootstrap: the bucket has
+`prevent_destroy`, and the IAM living in bootstrap is what CI needs to run.
 
 ```bash
 cd infra/terraform/environments/dev
@@ -176,8 +192,8 @@ All three should return nothing.
 │   ├── research/             # Design research memos (ADR inputs)
 │   └── invoices/             # Real monthly AWS invoices
 ├── infra/terraform/
-│   ├── bootstrap/            # S3 remote state backend (applied once, never destroyed)
-│   ├── environments/dev/     # The dev environment: calls modules, holds IAM + backend config
+│   ├── bootstrap/            # S3 state backend and all IAM (applied once locally, never destroyed)
+│   ├── environments/dev/     # The dev environment: calls modules, reads the SSM profile from bootstrap
 │   └── modules/
 │       ├── compute/          # Reusable compute module: NAT instance, SG, EIP
 │       ├── iam/              # Reusable IAM module: roles, policies, OIDC federation
