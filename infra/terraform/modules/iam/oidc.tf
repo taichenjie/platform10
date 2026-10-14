@@ -109,6 +109,13 @@ data "aws_iam_policy_document" "github_actions_permissions" {
       "ec2:TerminateInstances",
       "ec2:ModifyInstanceAttribute",
 
+      # Launch templates (K3s server)
+      "ec2:CreateLaunchTemplate",
+      "ec2:CreateLaunchTemplateVersion",
+      "ec2:ModifyLaunchTemplate",
+      "ec2:DeleteLaunchTemplate",
+      "ec2:DeleteLaunchTemplateVersions",
+
       # Elastic IPs
       "ec2:AllocateAddress",
       "ec2:ReleaseAddress",
@@ -192,6 +199,56 @@ data "aws_iam_policy_document" "github_actions_permissions" {
     resources = ["${local.state_bucket_arn}/bootstrap/*"]
   }
 
+  # EventBridge rule and target for K3s Spot signals (modules/k3s-cluster/events.tf).
+  # Scoped to rules named <name_prefix>-k3s-*.
+  statement {
+    sid    = "EventBridgeK3sRules"
+    effect = "Allow"
+    actions = [
+      "events:PutRule",
+      "events:DeleteRule",
+      "events:DescribeRule",
+      "events:PutTargets",
+      "events:RemoveTargets",
+      "events:ListTargetsByRule",
+      "events:TagResource",
+      "events:UntagResource",
+      "events:ListTagsForResource",
+    ]
+    resources = ["arn:aws:events:${local.region}:${local.account_id}:rule/${local.k3s_prefix}-*"]
+  }
+
+  # CloudWatch log group that records the Spot signals.
+  # Scoped to groups named /aws/events/<name_prefix>-k3s-*.
+  statement {
+    sid    = "LogsK3sSpotEventGroups"
+    effect = "Allow"
+    actions = [
+      "logs:CreateLogGroup",
+      "logs:DeleteLogGroup",
+      "logs:PutRetentionPolicy",
+      "logs:DeleteRetentionPolicy",
+      "logs:TagResource",
+      "logs:UntagResource",
+      "logs:ListTagsForResource",
+    ]
+    resources = ["arn:aws:logs:${local.region}:${local.account_id}:log-group:/aws/events/${local.k3s_prefix}-*"]
+  }
+
+  # Log resource policies and group listing have no resource-level
+  # permissions in AWS, so they need resource "*".
+  statement {
+    sid    = "LogsResourcePolicyAndDescribe"
+    effect = "Allow"
+    actions = [
+      "logs:PutResourcePolicy",
+      "logs:DeleteResourcePolicy",
+      "logs:DescribeResourcePolicies",
+      "logs:DescribeLogGroups",
+    ]
+    resources = ["*"]
+  }
+
   # SSM parameter read for AMI lookups. The compute module resolves
   # the latest AL2023 AMI via an SSM public parameter.
   statement {
@@ -258,4 +315,13 @@ resource "aws_iam_policy" "github_actions_ci" {
 resource "aws_iam_role_policy_attachment" "github_actions_ci" {
   role       = aws_iam_role.github_actions_ci.name
   policy_arn = aws_iam_policy.github_actions_ci.arn
+}
+
+# Used to scope the K3s EventBridge and CloudWatch Logs permissions above.
+data "aws_region" "current" {}
+
+locals {
+  account_id = data.aws_caller_identity.current.account_id
+  region     = data.aws_region.current.region
+  k3s_prefix = "${var.name_prefix}-k3s"
 }
