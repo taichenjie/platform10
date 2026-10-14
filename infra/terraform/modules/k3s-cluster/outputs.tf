@@ -27,3 +27,8 @@ output "k3s_version" {
   description = "K3s release installed on the node."
   value       = var.k3s_version
 }
+
+output "spot_events_log_group" {
+  description = "CloudWatch log group that records Spot signals for the K3s server."
+  value       = aws_cloudwatch_log_group.spot_events.name
+}
