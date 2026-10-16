@@ -27,3 +27,15 @@ module "compute" {
   subnet_id             = module.vpc.public_subnet_ids["public-az1"]
   instance_profile_name = data.aws_iam_instance_profile.ec2_ssm.name
 }
+
+# K3s server node. Pinned to private-az1 on purpose: EBS volumes are bound to
+# one AZ, and the M8 Postgres volume must always reattach to the node.
+module "k3s_cluster" {
+  source = "../../modules/k3s-cluster"
+
+  name_prefix           = var.vpc_name
+  vpc_id                = module.vpc.vpc_id
+  vpc_cidr              = var.vpc_cidr
+  subnet_id             = module.vpc.private_subnet_ids["private-az1"]
+  instance_profile_name = data.aws_iam_instance_profile.ec2_ssm.name
+}
