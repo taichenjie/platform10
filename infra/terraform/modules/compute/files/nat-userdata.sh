@@ -26,6 +26,12 @@ exec > >(tee /var/log/user-data.log) 2>&1
 
 log() { echo "$(date -u +%FT%TZ) $*"; }
 
+# vpc_cidr is not a bash variable. Terraform's templatefile replaces it
+# with the real CIDR before this script reaches the instance, which is
+# why shellcheck cannot see it being assigned.
+# shellcheck disable=SC2154
+VPC_CIDR="${vpc_cidr}"
+
 log "NAT setup started"
 
 # 1. Swapfile. The instance has about 412 MB usable RAM. dnf reading the
@@ -78,8 +84,8 @@ sysctl --system
 # instance's IP, so replies come back here. Scoped to the VPC CIDR so
 # only VPC traffic is NATed. -C checks first so a rerun adds no duplicate.
 log "Step 5: adding MASQUERADE rule"
-if ! iptables -t nat -C POSTROUTING -o "$PRIMARY_IFACE" -s ${vpc_cidr} -j MASQUERADE 2>/dev/null; then
-  iptables -t nat -A POSTROUTING -o "$PRIMARY_IFACE" -s ${vpc_cidr} -j MASQUERADE
+if ! iptables -t nat -C POSTROUTING -o "$PRIMARY_IFACE" -s "$VPC_CIDR" -j MASQUERADE 2>/dev/null; then
+  iptables -t nat -A POSTROUTING -o "$PRIMARY_IFACE" -s "$VPC_CIDR" -j MASQUERADE
 fi
 
 # 6. Save the live rules to /etc/sysconfig/iptables and load them on boot.
@@ -94,7 +100,7 @@ if [ "$(sysctl -n net.ipv4.ip_forward)" != "1" ]; then
   log "ERROR: ip_forward is not 1"
   exit 1
 fi
-if ! iptables -t nat -C POSTROUTING -o "$PRIMARY_IFACE" -s ${vpc_cidr} -j MASQUERADE; then
+if ! iptables -t nat -C POSTROUTING -o "$PRIMARY_IFACE" -s "$VPC_CIDR" -j MASQUERADE; then
   log "ERROR: MASQUERADE rule is missing"
   exit 1
 fi

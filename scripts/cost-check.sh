@@ -8,8 +8,6 @@
 # or if any command in a pipeline fails. Prevents silent failures.
 set -euo pipefail
 
-# Target region for all AWS operations
-REGION="ap-southeast-1"
 
 # Calculate first day of current month and today's date.
 # Cost Explorer requires an explicit date range — it won't assume "this month".
