@@ -5,6 +5,11 @@ repos:
       - id: terraform_fmt
       - id: terraform_validate
       - id: terraform_tflint
+      - id: terraform_docs
+        files: ^infra/terraform/modules/k3s-cluster/
+        args:
+          - --hook-config=--path-to-file=README.md
+          - --hook-config=--add-to-existing-file=true
 
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v5.0.0

@@ -21,15 +21,6 @@ variable "vpc_id" {
   }
 }
 
-variable "vpc_cidr" {
-  description = "VPC CIDR block. Scopes the node security group rules to traffic from inside the VPC."
-  type        = string
-
-  validation {
-    condition     = can(cidrhost(var.vpc_cidr, 0))
-    error_message = "vpc_cidr must be a valid IPv4 CIDR block, e.g. 10.0.0.0/16."
-  }
-}
 
 variable "subnet_id" {
   description = "ID of the PRIVATE subnet for the node. The node never gets a public IP."
