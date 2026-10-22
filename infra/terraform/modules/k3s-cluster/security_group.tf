@@ -8,12 +8,13 @@
 # Egress: locked to what the node needs. Pod traffic leaves through the node,
 # so these rules also limit what pods can reach.
 #
-# Time sync (169.254.169.123) and IMDS (169.254.169.254) are link-local and
-# not filtered by security groups.
+# The Amazon DNS resolver (VPC base + 2), time sync (169.254.169.123) and IMDS
+# (169.254.169.254) are not filtered by security groups, so they need no rules.
+# An external reviewer pointed out that the old DNS egress rules did nothing.
 # ---------------------------------------------------------------------------
 resource "aws_security_group" "node" {
   name        = "${var.name_prefix}-k3s-node-sg"
-  description = "K3s node: node-to-node in, HTTPS and VPC DNS out."
+  description = "K3s node: node-to-node in, HTTPS out."
   vpc_id      = var.vpc_id
 
   tags = merge(var.tags, {
@@ -45,23 +46,4 @@ resource "aws_vpc_security_group_egress_rule" "node_https" {
   ip_protocol       = "tcp"
   from_port         = 443
   to_port           = 443
-}
-
-# VPC DNS resolver lives at the VPC base address + 2, inside the VPC CIDR.
-resource "aws_vpc_security_group_egress_rule" "node_dns_udp" {
-  security_group_id = aws_security_group.node.id
-  description       = "DNS over UDP to the VPC resolver"
-  cidr_ipv4         = var.vpc_cidr
-  ip_protocol       = "udp"
-  from_port         = 53
-  to_port           = 53
-}
-
-resource "aws_vpc_security_group_egress_rule" "node_dns_tcp" {
-  security_group_id = aws_security_group.node.id
-  description       = "DNS over TCP to the VPC resolver, for large responses"
-  cidr_ipv4         = var.vpc_cidr
-  ip_protocol       = "tcp"
-  from_port         = 53
-  to_port           = 53
 }
