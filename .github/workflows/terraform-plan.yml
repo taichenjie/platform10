@@ -163,6 +163,8 @@ jobs:
         uses: infracost/actions/setup@v3
         with:
           api-key: ${{ secrets.INFRACOST_API_KEY }}
+          version: 0.10.47  # exact pin. A range like 0.10.x needs a release lookup that broke on 22 Oct 2026
+
 
       # -------------------------------------------------------
       # 11. Generate the cost estimate from the plan JSON.
