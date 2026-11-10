@@ -50,7 +50,7 @@ would require.
 - [ ] Q3: Production-grade K3s + GitOps engine
 - [ ] Q4: Observability + thin self-service golden path
 
-## What exists today (v0.3.0, Q2 close)
+## What exists today (v0.3.0 at Q2 close, Q3 in progress)
 
 ### Q1 foundation
 
@@ -70,8 +70,8 @@ A private-first multi-AZ network on AWS, built entirely in Terraform.
 - OIDC federation for CI authentication. GitHub Actions authenticates via short-lived
   STS credentials. No static keys in GitHub Secrets. Trust policy pins three sub claim
   contexts (see [ADR-005](docs/adr/ADR-005-oidc-federation-for-github-actions-ci.md))
-- Least-privilege permission policy scoped to the current 36-resource stack, with
-  deliberate expansion tracked per month
+- Least-privilege permission policy, expanded one resource type at a time as the
+  stack grows
 - Three automated quality gates on every PR: code standards (fmt + tflint),
   security (Checkov hard-fail), cost visibility (Infracost)
 - Terraform modules extracted and published to the Terraform Registry:
@@ -81,11 +81,27 @@ A private-first multi-AZ network on AWS, built entirely in Terraform.
 - Module extraction via moved blocks with zero resource recreation
   (see [ADR-004](docs/adr/ADR-004-moved-block-refactor.md))
 
-Worst-case 24/7 cost projection: ~$52/mo, dominated by the interface endpoints.
+### Q3 in progress: K3s cluster (M5)
+
+- A `k3s-cluster` module: one K3s server on a Spot Graviton instance in a private
+  subnet, reached only through SSM. IMDSv2 with hop limit 1, an encrypted gp3 root
+  volume, and a security group that allows only node-to-node traffic and HTTPS out
+  (see the [module README](infra/terraform/modules/k3s-cluster/README.md))
+- K3s pinned one minor behind stable on purpose, to stage a real upgrade later
+- NetworkPolicy enforcement proven by a negative test at cluster creation: allowed,
+  then rejected under a default-deny policy, then allowed again
+- An EventBridge rule that records Spot interruption warnings for the node
+- Session scripts that rebuild the stack and wait until K3s is Ready, then destroy
+  it and audit for leftovers
+- Cluster size decided from a measured idle baseline: a t4g.medium server from M6
+  (see [docs/research/](docs/research/))
+
+Worst-case 24/7 cost projection: about $70/mo with the K3s node, dominated by the
+interface endpoints.
 Actual spend is kept far lower by an apply/destroy workflow: the network is stood
 up for a work session and torn down after, not left running. See `docs/cost/`.
 
-## Deploying the Q1+Q2 foundation
+## Deploying
 
 ### Prerequisites
 
@@ -118,11 +134,20 @@ terraform plan
 
 Deploying into a new AWS account needs extra backend steps; see ADR-012.
 
-### Deploy the network
+### Deploy dev
 
 Requires bootstrap. Dev reads the SSM instance profile with a data source, so
 the plan fails at that lookup if bootstrap has not been applied. CI can also run
 this apply through the manual `terraform-apply.yml` workflow.
+
+The normal path is the session script. It runs the apply below, then waits until
+the node is Online in SSM and K3s reports Ready:
+
+```bash
+./scripts/dev-apply.sh
+```
+
+To run the Terraform steps by hand:
 
 ```bash
 cd infra/terraform/environments/dev
@@ -131,8 +156,8 @@ terraform plan -var-file=dev.tfvars -out=tfplan.binary
 terraform apply tfplan.binary
 ```
 
-Apply takes about 3 minutes and creates 28 resources. The SSM agent on the NAT
-instance may take an additional 1-2 minutes to register after apply completes.
+Apply creates 38 resources. On its first run the script took 2m57s from start to
+K3s Ready.
 
 ### Verify
 
@@ -162,31 +187,30 @@ control. Destroy dev only. Never destroy bootstrap: the bucket has
 `prevent_destroy`, and the IAM living in bootstrap is what CI needs to run.
 
 ```bash
-cd infra/terraform/environments/dev
-terraform destroy -var-file=dev.tfvars
+./scripts/dev-destroy.sh
 ```
+
+It runs `terraform destroy -var-file=dev.tfvars`, checks the state is empty, then
+runs the audit below.
 
 ### Audit (confirm nothing is left billing)
 
 ```bash
-aws ec2 describe-instances --filters "Name=tag:Project,Values=platform10" \
-  "Name=instance-state-name,Values=running,stopped,pending,stopping" \
-  --query "Reservations[].Instances[].InstanceId" --output text
-aws ec2 describe-addresses --query "Addresses[].PublicIp" --output text
-aws ec2 describe-vpc-endpoints --filters "Name=tag:Project,Values=platform10" \
-  --query "VpcEndpoints[].VpcEndpointId" --output text
+./scripts/orphan-audit.sh
 ```
 
-All three should return nothing.
+It counts 10 resource types that either cost money or would clash with the next
+apply, and exits with an error if any are left.
 
 ## Repo Structure
 
 ```text
 ├── .github/workflows/
-│   ├── terraform-plan.yml    # Plan on PR and push to main (fmt, tflint, Checkov, Infracost, plan)
+│   ├── terraform-plan.yml    # Plan on PRs to main (fmt, tflint, Checkov, Infracost, plan)
 │   └── terraform-apply.yml   # Gated apply on workflow_dispatch with environment approval
 ├── docs/
-│   ├── adr/                  # Architecture decision records (ADR-001 through ADR-005)
+│   ├── adr/                  # Architecture decision records (ADR-001 to ADR-005, ADR-012)
+│   ├── articles/             # Raw notes and capture plans for blog articles
 │   ├── cost/                 # Infracost projections
 │   ├── evidence/             # CI verification artifacts (OIDC negative test)
 │   ├── research/             # Design research memos (ADR inputs)
@@ -197,8 +221,9 @@ All three should return nothing.
 │   └── modules/
 │       ├── compute/          # Reusable compute module: NAT instance, SG, EIP
 │       ├── iam/              # Reusable IAM module: roles, policies, OIDC federation
+│       ├── k3s-cluster/      # K3s server node: launch template, SG, Spot interruption rule
 │       └── vpc/              # Reusable VPC module: network, endpoints
-└── scripts/                  # Cost-check and operational scripts
+└── scripts/                  # Session apply/destroy, orphan audit, cost check
 ```
 
 ## Cost discipline
