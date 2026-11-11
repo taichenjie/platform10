@@ -2,10 +2,16 @@ name: "Terraform Apply"
 
 # ---------------------------------------------------------------
 # Trigger: manual only (workflow_dispatch).
-# This is a deliberate cost-control choice. Merge to main does NOT
-# auto-apply. Infrastructure is applied only when I choose to run
-# this workflow, then destroyed after the session. In a funded
-# production setup this would trigger on push to main instead.
+# Deliberate cost control. Merge to main does NOT auto-apply. I run
+# this when I want the stack up, then destroy it after the session.
+# A funded production setup would trigger on push to main instead.
+#
+# Two jobs (review #3, ADR-005 amendment):
+#   plan   plan role, no gate. Writes the plan, shows it in the run
+#          summary, uploads it to the state bucket.
+#   apply  apply role, behind the production-apply environment. The
+#          reviewer approves a plan they can read, and this job applies
+#          exactly that plan after checking its SHA-256.
 # ---------------------------------------------------------------
 on:
   workflow_dispatch:
@@ -15,11 +21,8 @@ on:
         required: true
         type: string
 
-# ---------------------------------------------------------------
-# Only one apply can run at a time. No cancel-in-progress here:
-# cancelling a running apply mid-flight could leave resources
-# created but not recorded in state (orphans). Let it finish.
-# ---------------------------------------------------------------
+# One apply at a time. No cancel-in-progress: cancelling mid-apply can
+# leave resources created but not recorded in state.
 concurrency:
   group: terraform-apply
   cancel-in-progress: false
@@ -28,32 +31,30 @@ permissions:
   contents: read
   id-token: write
 
-jobs:
-  terraform-apply:
-    name: "apply (gated)"
-    runs-on: ubuntu-latest
+env:
+  TF_VAR_FILE: dev.tfvars
+  TF_IN_AUTOMATION: true
+  TF_WORKDIR: infra/terraform/environments/dev
+  PLAN_BUCKET: platform10-tfstate-471934606798
 
-    # The approval gate. This job pauses until a required reviewer
-    # approves it in the Actions UI. Also restricted to main branch
-    # via the environment's branch protection.
-    environment: production-apply
+jobs:
+  plan:
+    name: "plan"
+    runs-on: ubuntu-latest
 
     defaults:
       run:
-        working-directory: infra/terraform/environments/dev
+        working-directory: ${{ env.TF_WORKDIR }}
 
-    env:
-      TF_VAR_FILE: dev.tfvars
-      TF_IN_AUTOMATION: true
+    outputs:
+      has_changes: ${{ steps.plan.outputs.has_changes }}
+      plan_key: ${{ steps.upload.outputs.plan_key }}
+      plan_sha256: ${{ steps.upload.outputs.plan_sha256 }}
 
     steps:
-      # -------------------------------------------------------
-      # 0. Guard: fail immediately if the confirm input is not
-      #    exactly "apply". A second barrier on top of the
-      #    environment approval.
-      # -------------------------------------------------------
+      # Second barrier on top of the environment approval.
       - name: Validate confirmation input
-        if: ${{ github.event.inputs.confirm != 'apply' }}
+        if: ${{ inputs.confirm != 'apply' }}
         run: |
           echo "::error::Confirmation failed. You must type 'apply' to proceed."
           exit 1
@@ -67,40 +68,109 @@ jobs:
           terraform_version: "1.15.5"
           terraform_wrapper: false
 
-      - name: Configure AWS credentials (OIDC)
+      # Read-only plan role. Trusts ref:refs/heads/main for this job, so a
+      # dispatch from any other branch fails here.
+      - name: Configure AWS credentials (plan role)
         uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a # v4.3.1
         with:
-          role-to-assume: arn:aws:iam::471934606798:role/platform10-github-actions-ci
+          role-to-assume: arn:aws:iam::471934606798:role/platform10-ci-plan
           aws-region: ap-southeast-1
 
       - name: Terraform init
         run: terraform init -input=false
 
-      # -------------------------------------------------------
-      # Plan again inside the apply workflow, saved to a file.
-      # We apply this exact saved plan, not a fresh apply. This
-      # guarantees apply does exactly what plan showed, with no
-      # drift between the two steps. -lock=true (default) here
-      # because apply mutates state and must hold the lock.
-      # -------------------------------------------------------
+      # -detailed-exitcode: 0 = no changes, 1 = error, 2 = changes.
+      # No changes means no apply job and no approval request.
       - name: Terraform plan
+        id: plan
         run: |
+          set +e
           terraform plan \
-            -var-file=${{ env.TF_VAR_FILE }} \
+            -var-file="$TF_VAR_FILE" \
             -input=false \
+            -detailed-exitcode \
             -out=tfplan.binary
+          code=$?
+          set -e
+          case "$code" in
+            0) echo "has_changes=false" >> "$GITHUB_OUTPUT" ;;
+            2) echo "has_changes=true" >> "$GITHUB_OUTPUT" ;;
+            *) echo "::error::terraform plan failed with exit code $code"; exit "$code" ;;
+          esac
 
-      # -------------------------------------------------------
-      # Apply the saved plan. No -auto-approve flag needed when
-      # applying a saved plan file: Terraform does not prompt
-      # because the plan is already the approved set of actions.
-      # -------------------------------------------------------
+      # The reviewer reads this before approving. terraform show masks
+      # sensitive values; the binary plan file does not, which is why the
+      # file itself never becomes an artifact.
+      - name: Show plan in run summary
+        run: |
+          {
+            echo "## Terraform plan (${{ github.sha }})"
+            echo '```text'
+            terraform show -no-color tfplan.binary
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # Keyed by run ID, so a re-run of the apply job finds the same plan.
+      # The hash goes to the apply job as a job output, which PR code
+      # cannot change, so a plan swapped in S3 is caught before apply.
+      - name: Upload plan to state bucket
+        id: upload
+        if: steps.plan.outputs.has_changes == 'true'
+        run: |
+          key="plans/${{ github.run_id }}/tfplan.binary"
+          sha=$(sha256sum tfplan.binary | cut -d' ' -f1)
+          aws s3 cp tfplan.binary "s3://${PLAN_BUCKET}/${key}" --only-show-errors
+          echo "plan_key=${key}" >> "$GITHUB_OUTPUT"
+          echo "plan_sha256=${sha}" >> "$GITHUB_OUTPUT"
+          echo "Uploaded s3://${PLAN_BUCKET}/${key} (sha256 ${sha})"
+
+  apply:
+    name: "apply (gated)"
+    needs: plan
+    if: needs.plan.outputs.has_changes == 'true'
+    runs-on: ubuntu-latest
+
+    # The approval gate. Pauses for a required reviewer. Deployment
+    # branches restricted to main (checked 11 Nov 2026). With an
+    # environment, the OIDC sub carries the environment name, not the
+    # ref, so this restriction is what keeps other branches out.
+    environment: production-apply
+
+    defaults:
+      run:
+        working-directory: ${{ env.TF_WORKDIR }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3.1.2
+        with:
+          terraform_version: "1.15.5"
+          terraform_wrapper: false
+
+      - name: Configure AWS credentials (apply role)
+        uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a # v4.3.1
+        with:
+          role-to-assume: arn:aws:iam::471934606798:role/platform10-ci-apply
+          aws-region: ap-southeast-1
+
+      - name: Terraform init
+        run: terraform init -input=false
+
+      - name: Download and verify saved plan
+        env:
+          PLAN_KEY: ${{ needs.plan.outputs.plan_key }}
+          PLAN_SHA256: ${{ needs.plan.outputs.plan_sha256 }}
+        run: |
+          aws s3 cp "s3://${PLAN_BUCKET}/${PLAN_KEY}" tfplan.binary --only-show-errors
+          echo "${PLAN_SHA256}  tfplan.binary" | sha256sum --check --strict
+
+      # Applies the approved plan and nothing else. If state changed since
+      # the plan, Terraform refuses with "Saved plan is stale".
       - name: Terraform apply
         run: terraform apply -input=false tfplan.binary
 
-      # -------------------------------------------------------
-      # Print the outputs so the run log shows what was created
-      # (VPC ID, instance profile name, etc).
-      # -------------------------------------------------------
       - name: Show outputs
         run: terraform output
