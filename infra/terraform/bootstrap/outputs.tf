@@ -18,7 +18,12 @@ output "ec2_ssm_instance_profile_name" {
   value       = module.iam.ec2_ssm_instance_profile_name
 }
 
-output "github_actions_ci_role_arn" {
-  description = "ARN of the GitHub Actions CI role for OIDC federation."
-  value       = module.iam.github_actions_ci_role_arn
+output "ci_plan_role_arn" {
+  description = "ARN of the read-only CI plan role."
+  value       = module.iam.ci_plan_role_arn
+}
+
+output "ci_apply_role_arn" {
+  description = "ARN of the CI apply role."
+  value       = module.iam.ci_apply_role_arn
 }

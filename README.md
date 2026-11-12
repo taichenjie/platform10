@@ -68,8 +68,10 @@ A private-first multi-AZ network on AWS, built entirely in Terraform.
 ### Q2 pipeline and security hardening
 
 - OIDC federation for CI authentication. GitHub Actions authenticates via short-lived
-  STS credentials. No static keys in GitHub Secrets. Trust policy pins three sub claim
-  contexts (see [ADR-005](docs/adr/ADR-005-oidc-federation-for-github-actions-ci.md))
+  STS credentials. No static keys in GitHub Secrets. PR plans run as a read-only plan
+  role. Only the approval-gated apply job can assume the write role, and it applies the
+  saved plan the reviewer read (see [ADR-005](docs/adr/ADR-005-oidc-federation-for-github-actions-ci.md))
+- Third-party actions pinned to full commit SHAs
 - Least-privilege permission policy, expanded one resource type at a time as the
   stack grows
 - Three automated quality gates on every PR: code standards (fmt + tflint),
@@ -114,12 +116,12 @@ up for a work session and torn down after, not left running. See `docs/cost/`.
 ### One-time: bootstrap (state backend and IAM)
 
 Bootstrap creates the S3 bucket that holds Terraform state, and all IAM: the
-permission boundary, the GitHub OIDC provider, the CI role and its policy, and
+permission boundary, the GitHub OIDC provider, the two CI roles (plan and apply), and
 the EC2 SSM role and instance profile. It is intentionally isolated so that
 destroying the dev environment never touches the state bucket or the identities
 CI and the instances depend on.
 
-Bootstrap is applied locally as `cj-admin`, never by CI (the CI role's boundary
+Bootstrap is applied locally as `cj-admin`, never by CI (the CI roles' boundary
 denies IAM writes), and it is never destroyed. Its own state lives in the same
 bucket at `bootstrap/terraform.tfstate`. See ADR-012.
 
@@ -207,7 +209,7 @@ apply, and exits with an error if any are left.
 ```text
 ├── .github/workflows/
 │   ├── terraform-plan.yml    # Plan on PRs to main (fmt, tflint, Checkov, Infracost, plan)
-│   └── terraform-apply.yml   # Gated apply on workflow_dispatch with environment approval
+│   └── terraform-apply.yml   # Plan job, then gated apply of the saved plan (dispatch)
 ├── docs/
 │   ├── adr/                  # Architecture decision records (ADR-001 to ADR-005, ADR-012)
 │   ├── articles/             # Raw notes and capture plans for blog articles

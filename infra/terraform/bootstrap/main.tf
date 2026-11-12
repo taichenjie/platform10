@@ -85,4 +85,26 @@ resource "aws_s3_bucket_lifecycle_configuration" "terraform_state" {
       days_after_initiation = 7
     }
   }
+
+  # Saved plans from the apply workflow (plans/<run_id>/<attempt>/tfplan).
+  # A plan file holds resolved values in plaintext, so it lives one day.
+  # Noncurrent versions too: the bucket is versioned, so expiring the
+  # current version only adds a delete marker and keeps the old bytes.
+  # Where this overlaps the 90-day rule above, S3 applies the shorter one.
+  rule {
+    id     = "expire-saved-plans"
+    status = "Enabled"
+
+    filter {
+      prefix = "plans/"
+    }
+
+    expiration {
+      days = 1
+    }
+
+    noncurrent_version_expiration {
+      noncurrent_days = 1
+    }
+  }
 }
