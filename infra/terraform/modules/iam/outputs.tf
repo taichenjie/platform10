@@ -15,10 +15,6 @@ output "ec2_ssm_role_name" {
   description = "Name of the EC2 SSM role. Exposed for future policy attachments or auditing."
   value       = aws_iam_role.ec2_ssm.name
 }
-output "github_actions_ci_role_arn" {
-  description = "ARN of the GitHub Actions CI role. Used in workflow YAML for role-to-assume."
-  value       = aws_iam_role.github_actions_ci.arn
-}
 
 output "ci_plan_role_arn" {
   description = "ARN of the read-only CI plan role. PR plans and the apply workflow's plan job."
