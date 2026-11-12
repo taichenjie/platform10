@@ -68,3 +68,19 @@ A branch other than main cannot get either CI role. The plan role refuses it in
 IAM. The apply role is reached only through production-apply, and the
 environment refuses the branch before the job starts. PR plans run with the
 read-only role.
+
+## 4. Main dispatch plans, waits for approval, applies the saved plan
+
+| Item | Value |
+|---|---|
+| Run | https://github.com/taichenjie/platform10/actions/runs/43181637874 |
+| Commit | `89a36f0` on `main` (PR #27 merge) |
+| plan job | Passed in 33s as platform10-ci-plan. Run summary showed `Plan: 38 to add, 0 to change, 0 to destroy.` |
+| Gate | `production-apply waiting for review`. I read the plan in the summary, then approved |
+| Verify step | `tfplan.binary: OK` |
+| Apply | `Apply complete! Resources: 38 added, 0 changed, 0 destroyed.` |
+| Clean-up | Destroyed locally (38), orphan audit passed, EBS volumes 0 |
+
+This closes review #3 finding 3. The plan existed and was readable before I
+approved, and the apply job applied that exact file. It also proves the apply
+role holds every write the dev stack needs, on its first run.
