@@ -28,3 +28,8 @@ The "This step should never run" step did not execute.
 ## Conclusion
 
 The trust policy correctly rejects tokens from unauthorized workflow contexts.
+
+## Superseded (2026-11-12)
+
+The shared CI role tested here was split into a plan role and an apply role in
+PR #27 (review #3). Current evidence is in `ci-role-split-negative-test.md`.
