@@ -1,7 +1,7 @@
 # ADR-005: OIDC federation for GitHub Actions CI
 
 **Date:** 2026-08-27
-**Status:** Accepted. Resource location amended by ADR-012.
+**Status:** Accepted. Resource location amended by ADR-012. CI roles split by Amendment 1 (2026-11-12).
 **Deciders:** CJ
 **Tags:** security, tooling
 
@@ -133,3 +133,113 @@ In a production system:
 - OIDC PR: https://github.com/taichenjie/platform10/pull/4
 - AWS OIDC documentation: https://docs.aws.amazon.com/IAM/latest/UserGuide/id_roles_providers_create_oidc.html
 - GitHub OIDC documentation: https://docs.github.com/en/actions/deployment/security-hardening-your-deployments/configuring-openid-connect-in-amazon-web-services
+
+## Amendment 1 (2026-11-12): plan and apply roles, gated saved plan
+
+External review #3 (27 Oct 2026) found three problems in the CI setup above.
+I fixed all three in PR #27, along with three hardening changes.
+
+### What was wrong
+
+| Finding | Why it mattered |
+|---|---|
+| Plan and apply shared one write-capable role | Every PR plan ran with credentials that could create and delete infrastructure. Any code in a PR could use them, including the third-party actions in the job. |
+| PR plans ran with `-lock=false` | A plan could read state while an apply was writing it, and show a wrong diff. |
+| The environment gate sat in front of the whole apply job | I approved before the plan existed. Approval was blind. |
+
+### Decision
+
+I split the shared role into two roles. Both are bounded by the same
+permission boundary and both live in bootstrap (ADR-012).
+
+| Role | Trusts (`sub`) | Can do |
+|---|---|---|
+| `platform10-ci-plan` | `pull_request`, `ref:refs/heads/main` | Reads, the `.tflock` key, upload to `plans/*` |
+| `platform10-ci-apply` | `environment:production-apply` only | Reads, infrastructure writes, state writes, read `plans/*` |
+
+The unused `ref:refs/heads/main` subject is gone from the write side. The old
+`platform10-github-actions-ci` role was deleted once both workflows had moved.
+
+PR plans now run as the plan role, without `-lock=false`. The plan role can
+write the lock object and nothing else in state, so a plan takes the lock like
+any other run.
+
+The apply workflow has two jobs.
+
+| Job | Role | Gate | What it does |
+|---|---|---|---|
+| `plan` | plan role | none | Plans, prints the plan in the run summary, uploads the plan file to the state bucket, passes its SHA-256 as a job output |
+| `apply` | apply role | `production-apply` | Downloads the plan, checks the hash, applies that file |
+
+I now approve a plan I can read. If state changes while the run waits, Terraform
+refuses the saved plan as stale.
+
+### Why two workflows, not one
+
+I kept `terraform-plan.yml` and `terraform-apply.yml` separate. They differ in
+trigger (pull request vs manual dispatch), gate (none vs required reviewer) and
+role. One workflow would need conditions on every step to tell the paths apart,
+and a mistake in one condition could give a PR the apply path. Manual dispatch
+stays because dev is destroyed every session and merge should not create it.
+
+### The environment branch restriction
+
+With an environment, GitHub puts the environment name in the `sub` claim instead
+of the branch. The apply role's trust policy therefore cannot tell `main` from
+any other branch. The only thing keeping other branches out of the write role is
+the environment's deployment-branch rule, which allows `main` only.
+
+I tested each layer on its own. A dispatch from `ci/role-split` failed at the
+plan role in IAM. A throwaway branch whose only job asked for `production-apply`
+failed at the environment before any step ran. Evidence is in
+`docs/evidence/ci-role-split-negative-test.md`.
+
+### Where the saved plan lives
+
+The plan file goes to `s3://platform10-tfstate-471934606798/plans/<run_id>/`.
+It is not a GitHub artifact. A plan file holds resolved values in plaintext,
+and artifacts on a public repo can be downloaded. The bucket is private and
+KMS-encrypted. A lifecycle rule deletes current and noncurrent versions after
+one day. S3 rounds lifecycle times up to the next midnight UTC, so a plan can
+live up to about two days.
+
+The plan role can write `plans/*`, and PR code runs as the plan role. A PR could
+therefore overwrite a saved plan while an apply run waits for approval. The
+apply job checks the file against the SHA-256 that the plan job passed as a job
+output. PR code cannot change another run's job outputs, so a swapped file fails
+the check before anything is applied. I chose this over a third role for the
+apply workflow's plan job, which would add IAM for little gain.
+
+### Third-party actions pinned to commit SHAs
+
+Review #3 named third-party actions as the main real threat, because they run
+inside jobs that hold AWS credentials. A tag can be moved to new code. A commit
+SHA cannot. Every `uses:` line now names a full commit SHA, with the version in
+a trailing comment. Each pin is the commit the major tag resolved to on
+11 Nov 2026, so behaviour did not change. Renovate proposes bumps from M9.
+
+### Trade-offs accepted
+
+**PR code can still read through the plan role.** Code in a PR runs with the
+plan role. It can read state, which can hold secrets, and describe the account.
+I accept this because I am the only person who pushes to this repo, and fork
+pull requests do not receive OIDC tokens. A repo with outside contributors would
+need a separate PR role with no state access, or plans run only after a
+maintainer label.
+
+**The plan text is public.** The run summary on a public repo shows the plan.
+`terraform show` prints sensitive values as `(sensitive value)`, and the PR plan
+log already showed the same text before this change. The binary file, which
+holds the real values, never leaves the private bucket.
+
+**Admins can bypass the gate.** `production-apply` has `can_admins_bypass: true`
+and `prevent_self_review: false`. I am the only admin and the only reviewer, so
+the gate stops a mistake, not a person. A team would turn both off and require a
+second reviewer.
+
+### Links
+
+- Roles: `infra/terraform/modules/iam/ci_roles.tf`
+- Plans lifecycle rule: `infra/terraform/bootstrap/main.tf`
+- Evidence: `docs/evidence/ci-role-split-negative-test.md`
+- Fix PR: https://github.com/taichenjie/platform10/pull/27
