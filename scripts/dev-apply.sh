@@ -23,8 +23,13 @@ REPO_ROOT=$(git rev-parse --show-toplevel)
 DEV_DIR="$REPO_ROOT/infra/terraform/environments/dev"
 TFVARS="dev.tfvars"
 
-SSM_TIMEOUT=300    # seconds to wait for SSM Online, before and after the reboot
-READY_TIMEOUT=600  # seconds to wait for K3s Ready (NAT setup plus K3s install)
+# Timeouts can be overridden from the environment, for example
+# SSM_TIMEOUT=10 ./scripts/dev-apply.sh to force the reboot fallback.
+# The wait after the reboot has its own timeout, so a short first
+# timeout does not also cut off the recovery.
+SSM_TIMEOUT="${SSM_TIMEOUT:-300}"               # seconds to wait for SSM Online
+REBOOT_SSM_TIMEOUT="${REBOOT_SSM_TIMEOUT:-300}" # seconds to wait again after the reboot
+READY_TIMEOUT="${READY_TIMEOUT:-600}"           # seconds to wait for K3s Ready (NAT setup plus K3s install)
 POLL=15            # seconds between checks
 
 START_TIME=$(date +%s)
@@ -54,10 +59,11 @@ INSTANCE_ID=$(terraform output -raw k3s_instance_id)
 log "K3s instance is $INSTANCE_ID"
 
 # ---------- 3. Wait for SSM Online ----------
-# Returns 0 once SSM reports the node Online, 1 on timeout.
+# Takes a timeout in seconds. Returns 0 once SSM reports the node Online,
+# 1 on timeout.
 wait_for_ssm() {
-  local waited=0 status
-  while [ "$waited" -lt "$SSM_TIMEOUT" ]; do
+  local timeout=$1 waited=0 status
+  while [ "$waited" -lt "$timeout" ]; do
     status=$(aws ssm describe-instance-information \
       --filters "Key=InstanceIds,Values=$INSTANCE_ID" \
       --query 'InstanceInformationList[0].PingStatus' --output text)
@@ -72,12 +78,16 @@ wait_for_ssm() {
 }
 
 log "Waiting for SSM Online, up to ${SSM_TIMEOUT}s"
-if ! wait_for_ssm; then
+if ! wait_for_ssm "$SSM_TIMEOUT"; then
   # Lesson from M4. The SSM agent can start before the instance profile
   # works, and then it never registers. A reboot restarts the agent.
   log "Not Online after ${SSM_TIMEOUT}s, rebooting once"
   aws ec2 reboot-instances --instance-ids "$INSTANCE_ID"
-  wait_for_ssm || fail "SSM still not Online after the reboot. Check the instance profile and the SSM endpoints"
+  # Give the reboot time to start, so a stale Online from before it
+  # is not read as recovery.
+  sleep "$POLL"
+  log "Waiting for SSM Online after the reboot, up to ${REBOOT_SSM_TIMEOUT}s"
+  wait_for_ssm "$REBOOT_SSM_TIMEOUT" || fail "SSM still not Online after the reboot. Check the instance profile and the SSM endpoints"
 fi
 log "SSM Online"
 
