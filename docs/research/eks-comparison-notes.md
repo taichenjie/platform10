@@ -23,7 +23,7 @@ Amazon EKS runs the Kubernetes control plane for me. AWS operates the API server
 | Pod networking (CNI) | Flannel overlay | Amazon VPC CNI. Pods get real VPC IP addresses |
 | NetworkPolicy enforcement | K3s embedded controller, on by default | VPC CNI network policy agent, off until enabled |
 | Ingress | Traefik, bundled with K3s | AWS Load Balancer Controller, or my own ingress controller |
-| AWS permissions for pods | Instance role only. IMDS hop limit 1 blocks pods from it | Per-pod IAM roles with EKS Pod Identity or IRSA |
+| AWS permissions for pods | Instance role only. IMDS hop limit 1 blocks pods on the pod network from it. hostNetwork and privileged pods bypass it | Per-pod IAM roles with EKS Pod Identity or IRSA |
 
 ## Cost
 
@@ -70,7 +70,7 @@ My planned stack (ArgoCD, Kyverno, Prometheus, Grafana, cert-manager, the EBS CS
 
 ## Pod permissions
 
-On K3s, every pod shares one EC2 instance role, so I block pods from it with an IMDS hop limit of 1. Pods currently have no AWS credentials at all. On EKS, Pod Identity gives each workload its own IAM role with only the permissions it needs.
+On K3s, every pod shares one EC2 instance role. An IMDS hop limit of 1 keeps pods on the pod network away from it, so those pods have no AWS credentials. Pods that run with hostNetwork or privileged access bypass the hop limit, and until the M7 admission policies land, nothing in the cluster prevents such a pod. On EKS, Pod Identity gives each workload its own IAM role with only the permissions it needs.
 
 This matters in M8. The EBS CSI driver is a pod that needs AWS permissions to create volumes. On K3s it will need host networking, a hop limit of 2, or a self-hosted OIDC setup. On EKS it gets its own role.
 

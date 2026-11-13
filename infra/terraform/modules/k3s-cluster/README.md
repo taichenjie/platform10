@@ -13,7 +13,7 @@ The user data installs a pinned K3s release as a server, then waits for the node
 ## Security posture
 
 - No SSH and no public IP. I reach the node only through SSM Session Manager, using an instance profile from the bootstrap layer.
-- IMDSv2 is required with a hop limit of 1, so pods cannot use the node's IAM role.
+- IMDSv2 is required with a hop limit of 1. Pods on the pod network cannot reach instance metadata, so they cannot use the node's IAM role. Pods that run with hostNetwork or privileged access bypass the hop limit. Until the M7 admission policies land, nothing in the cluster prevents such a pod. From M7, Pod Security Admission (Baseline) blocks them in app namespaces, with system workloads on a documented exception list.
 - The root volume is encrypted gp3.
 - Ingress is allowed only from other nodes in the same security group. Egress is 443 to anywhere plus all traffic to the same group. Security groups do not filter the Amazon DNS resolver, IMDS or time sync, so they need no rules.
 - K3s runs with secrets encryption on and the kubeconfig set to mode 0600.
