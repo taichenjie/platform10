@@ -34,7 +34,7 @@ permissions:
 jobs:
   terraform-check:
     name: "fmt / validate / plan"
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04 # pinned 13 Nov 2026, image 20261101.186.1
 
     # All terraform commands run from the dev environment directory.
     defaults:
