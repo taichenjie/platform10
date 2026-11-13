@@ -40,7 +40,7 @@ env:
 jobs:
   plan:
     name: "plan"
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04 # pinned 13 Nov 2026, image 20261101.186.1
 
     defaults:
       run:
@@ -128,7 +128,7 @@ jobs:
     name: "apply (gated)"
     needs: plan
     if: needs.plan.outputs.has_changes == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04 # pinned 13 Nov 2026, image 20261101.186.1
 
     # The approval gate. Pauses for a required reviewer. Deployment
     # branches restricted to main (checked 11 Nov 2026). With an
