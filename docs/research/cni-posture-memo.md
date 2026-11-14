@@ -52,7 +52,7 @@ On 21 Oct 2026 I ran a negative test on the live cluster (K3s v1.35.9+k3s1, t4g.
 | Apply a default-deny ingress policy, curl again | Refused in 1 ms, curl exit code 7 |
 | Delete the policy, curl again | HTTP 200 |
 
-The refusal while the policy existed, with success before and after, shows the policy caused the block. The controller rejects blocked traffic rather than dropping it, so curl failed at once instead of timing out. I will confirm the REJECT rule with `iptables-save` at the next live session.
+The refusal while the policy existed, with success before and after, shows the policy caused the block. The controller rejects blocked traffic rather than dropping it, so curl failed at once instead of timing out. I confirmed the REJECT rule on 14 Nov 2026 with the `iptables-save` bundled in K3s, and tested the pod IP directly to rule out kube-proxy (`docs/evidence/netpol-reject-rule.md`).
 
 ## Memory on my node
 
