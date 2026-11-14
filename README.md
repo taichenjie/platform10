@@ -89,9 +89,11 @@ A private-first multi-AZ network on AWS, built entirely in Terraform.
   subnet, reached only through SSM. IMDSv2 with hop limit 1, an encrypted gp3 root
   volume, and a security group that allows only node-to-node traffic and HTTPS out
   (see the [module README](infra/terraform/modules/k3s-cluster/README.md))
-- The hop limit keeps pods on the pod network away from the node's IAM role. Pods with
-  hostNetwork or privileged access bypass it, and nothing in the cluster prevents such a
-  pod until the M7 admission policies (Pod Security Admission, Baseline) land
+- The hop limit keeps pods on the pod network away from the node's IAM role. hostNetwork
+  pods share the node's network namespace and bypass it (tested 14 Nov 2026, see
+  `docs/evidence/imds-hop-limit-test.md`). Privileged pods can also reach the host network, but that
+  path is not tested here. Nothing in the cluster prevents such a pod until the M7
+  admission policies (Pod Security Admission, Baseline) land
 - K3s pinned one minor behind stable on purpose, to stage a real upgrade later
 - NetworkPolicy enforcement proven by a negative test at cluster creation: allowed,
   then rejected under a default-deny policy, then allowed again
